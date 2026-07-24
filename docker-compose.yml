@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: looktalk-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: looktalk
+      POSTGRES_USER: looktalk
+      POSTGRES_PASSWORD: looktalk
+    volumes:
+      - looktalk_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  looktalk_postgres_data:

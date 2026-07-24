@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5433/looktalk
+    username: looktalk
+    password: looktalk
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
