@@ -6,3 +6,15 @@ spring:
 
 server:
   port: 8080
+
+looktalk:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiry-seconds: 900
+  refresh-token:
+    expiry-days: 14
+  otp:
+    secret: ${OTP_HMAC_SECRET}
+    expiry-seconds: 300
+  reset-token:
+    expiry-seconds: 1800

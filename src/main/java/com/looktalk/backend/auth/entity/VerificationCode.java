@@ -38,8 +38,12 @@ public class VerificationCode {
     @Column(name = "target_value", length = 100, nullable = false)
     private String targetValue;
 
-    @Column(name = "code", length = 10, nullable = false)
-    private String code;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "purpose", length = 30, nullable = false)
+    private VerificationPurpose purpose;
+
+    @Column(name = "code_hash", length = 64, nullable = false)
+    private String codeHash;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;

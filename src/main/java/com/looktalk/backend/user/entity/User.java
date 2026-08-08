@@ -27,7 +27,7 @@ public class User {
     @Column(name = "user_id", length = 50)
     private String userId;
 
-    @Column(name = "user_name", length = 50, nullable = false)
+    @Column(name = "user_name", length = 50)
     private String userName;
 
     @Column(name = "user_email", length = 100, nullable = false, unique = true)
@@ -58,11 +58,11 @@ public class User {
     private Instant createdAt;
 
     // [임시결정 1] 로그인에 쓰는 "아이디". user_email과 별개 필드.
-    @Column(name = "login_id", length = 50, unique = true)
+    @Column(name = "login_id", length = 50, nullable = false, unique = true)
     private String loginId;
 
     // [임시결정 7] 역할 구분. users.role + staff/patient 테이블 병행.
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", length = 20)
+    @Column(name = "role", length = 20, nullable = false)
     private UserRole role;
 }
