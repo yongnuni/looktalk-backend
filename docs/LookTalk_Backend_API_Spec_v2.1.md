@@ -1,6 +1,6 @@
 # Look Talk Backend API 명세서 v2.1
 
-## 1. 구현 범위
+### 1. 구현 범위
 
 이번 백엔드 구현에서는 다음 기능을 구현한다.
 
@@ -37,7 +37,7 @@ InputSession
 
 ---
 
-# 2. DB 기준 사용자 구조
+## 2. DB 기준 사용자 구조
 
 회원은 모두 `users`에 저장하고 `role`로 사용자 유형을 구분한다.
 
@@ -87,11 +87,11 @@ user_email
 
 ---
 
-# 3. API 구현을 위한 추가 DB 구조
+## 3. API 구현을 위한 추가 DB 구조
 
 Refresh Token과 E2EE를 구현하기 위해 다음 구조를 추가한다.
 
-## 3.1 refresh_token
+### 3.1 refresh_token
 
 ```text
 refresh_token
@@ -105,7 +105,7 @@ refresh_token
 
 Refresh Token 원문은 DB에 저장하지 않는다. SHA-256 등의 방식으로 해시한 값을 저장한다.
 
-## 3.2 user_e2ee_key
+### 3.2 user_e2ee_key
 
 ```text
 user_e2ee_key
@@ -121,7 +121,7 @@ UNIQUE(user_id, key_version)
 
 서버에는 공개키만 저장한다. 개인키는 브라우저에서 생성하고 브라우저 저장소에 보관하며 Backend로 전송하지 않는다.
 
-## 3.3 message_ciphertext
+### 3.3 message_ciphertext
 
 병원 채팅 메시지는 사용자별 ciphertext를 따로 저장한다.
 
@@ -140,7 +140,7 @@ UNIQUE(message_id, recipient_user_id)
 
 SMS 채팅에서는 환자 본인의 공개키로 암호화한 ciphertext만 저장한다.
 
-## 3.4 memo / phrase 암호화 저장
+### 3.4 memo / phrase 암호화 저장
 
 `memo.content`, `phrase.phrase_text`에는 평문을 저장하지 않고 Base64 ciphertext를 저장한다.
 
@@ -151,7 +151,7 @@ memo.key_version
 phrase.key_version
 ```
 
-## 3.5 message 본문 저장
+### 3.5 message 본문 저장
 
 `message` 테이블에는 평문 메시지 본문을 저장하지 않는다.
 
@@ -167,7 +167,7 @@ created_at
 
 실제 메시지 본문은 `message_ciphertext`에 사용자별 ciphertext로 저장한다.
 
-## 3.6 chat_room.conversation_key
+### 3.6 chat_room.conversation_key
 
 동일 상대와의 1:1 채팅방이 중복 생성되지 않도록 `chat_room`에 `conversation_key VARCHAR(200)`을 사용한다.
 
@@ -185,7 +185,7 @@ SMS:{currentUserId}:{normalizedFriendPhone}
 
 `conversation_key`에는 NULL이 아닌 값에 대해 UNIQUE 인덱스를 적용한다.
 
-## 3.7 verification_code.code_hash
+### 3.7 verification_code.code_hash
 
 인증번호 원문은 DB에 저장하지 않는다.
 
@@ -199,7 +199,7 @@ SMS:{currentUserId}:{normalizedFriendPhone}
 
 인증 확인 시 사용자가 입력한 코드에 동일한 HMAC 연산을 적용한 뒤 DB의 `code_hash`와 비교한다.
 
-## 3.8 chat_participant.is_withdrawn
+### 3.8 chat_participant.is_withdrawn
 
 USER-005(회원탈퇴) 이후에도 `chat_room`/`message` 이력을 보존해야 하는데, 내부 participant는 `external_phone`이
 항상 NULL이라서 탈퇴로 `user_id`까지 NULL이 되면 어떤 회원인지도, 외부 지인인지도 구분할 수 없는 모호한 행이
@@ -231,7 +231,7 @@ chat_participant.is_withdrawn BOOLEAN NOT NULL DEFAULT FALSE
 
 ---
 
-# 4. 사용자 표시 이름 정책
+## 4. 사용자 표시 이름 정책
 
 Look Talk 내부 사용자는 다음 규칙으로 표시한다.
 
@@ -271,9 +271,9 @@ API에서는 화면 표시용 필드를 `displayName`으로 반환한다.
 
 ---
 
-# 5. 보안 및 암호화 정책
+## 5. 보안 및 암호화 정책
 
-## 5.1 비밀번호
+### 5.1 비밀번호
 
 비밀번호는 평문으로 저장하지 않는다.
 
@@ -287,7 +287,7 @@ API에서는 화면 표시용 필드를 `displayName`으로 반환한다.
 
 Application Log, 예외 로그, Request dump에 비밀번호를 기록하지 않는다.
 
-## 5.2 Refresh Token
+### 5.2 Refresh Token
 
 Refresh Token 원문은 DB에 저장하지 않는다.
 
@@ -299,21 +299,21 @@ Refresh Token 원문
 
 브라우저에는 `HttpOnly`, `Secure` Cookie로 전달한다.
 
-## 5.3 Reset Token
+### 5.3 Reset Token
 
 비밀번호 재설정 토큰은 원문을 사용자에게 전달하고 DB에는 해시값만 저장한다.
 
-## 5.4 이메일과 전화번호
+### 5.4 이메일과 전화번호
 
 이메일과 전화번호는 서비스 기능에서 실제 값이 필요하므로 현재 컬럼에 원문을 저장한다.
 
 운영 환경에서는 TLS를 적용하고 DB 접근 권한을 최소화한다. 이메일, 전화번호를 Application Log에 기록하지 않는다.
 
-## 5.5 인증번호
+### 5.5 인증번호
 
 이메일 및 SMS 인증번호는 발급 후 만료시간을 설정한다. 인증번호 원문은 DB에 저장하지 않고 서버 비밀키를 이용한 HMAC-SHA256 결과를 `verification_code.code_hash`에 저장한다.
 
-## 5.6 E2EE 적용 범위
+### 5.6 E2EE 적용 범위
 
 다음 사용자 콘텐츠는 E2EE 방식으로 처리한다.
 
@@ -327,7 +327,7 @@ Look Talk 내부 회원 간 병원 채팅
 
 Backend는 해당 ciphertext를 복호화할 수 있는 개인키를 보유하지 않는다.
 
-## 5.7 SMS 채팅
+### 5.7 SMS 채팅
 
 일반 SMS는 SMS Provider가 평문을 전달받아야 하므로 완전한 E2EE를 적용할 수 없다.
 
@@ -339,7 +339,7 @@ SMS 평문은 Application Log와 DB에 저장하지 않는다.
 
 ---
 
-# 6. E2EE 처리 방식
+## 6. E2EE 처리 방식
 
 E2EE는 `libsodium sealed box` 호환 방식을 사용한다.
 
@@ -353,7 +353,7 @@ API의 암호화 Payload는 다음 형식을 사용한다.
 }
 ```
 
-## 6.1 Base64 인코딩 규칙
+### 6.1 Base64 인코딩 규칙
 
 공개키(`publicKey`)와 ciphertext는 모두 **RFC 4648 Standard Base64**(`+`, `/`, `=` 패딩 포함)로 인코딩한다.
 
@@ -398,7 +398,7 @@ displayName
 
 ---
 
-# 7. Base URL
+## 7. Base URL
 
 모든 REST API는 다음 Prefix를 사용한다.
 
@@ -414,7 +414,7 @@ http://localhost:8080/api/auth/login
 
 ---
 
-# 8. Request Header 및 Cookie
+## 8. Request Header 및 Cookie
 
 JSON 요청은 다음 Header를 사용한다.
 
@@ -438,7 +438,7 @@ Set-Cookie: LOOKTALK_REFRESH={refreshToken}; HttpOnly; Secure; SameSite=Lax; Pat
 
 ---
 
-# 9. 인증 구조
+## 9. 인증 구조
 
 Spring Security와 JWT를 사용한다.
 
@@ -469,7 +469,7 @@ Access Token은 짧은 만료시간을 사용하고 Refresh Token은 더 긴 만
 
 ---
 
-# 10. 권한 구분
+## 10. 권한 구분
 
 | 표기 | 의미 |
 |---|---|
@@ -484,7 +484,7 @@ Controller 또는 Method Security에서 Role 접근 권한을 적용한다.
 
 ---
 
-# 11. 공통 성공 Response
+## 11. 공통 성공 Response
 
 모든 REST API는 다음 구조를 사용한다.
 
@@ -511,7 +511,7 @@ public record ApiResponse<T>(
 
 ---
 
-# 12. 공통 실패 Response
+## 12. 공통 실패 Response
 
 ```json
 {
@@ -526,7 +526,7 @@ Frontend는 `message` 문자열이 아니라 `code`를 기준으로 오류 유�
 
 ---
 
-# 13. HTTP Status 정책
+## 13. HTTP Status 정책
 
 | HTTP | 사용하는 경우 |
 |---:|---|
@@ -545,7 +545,7 @@ Frontend는 `message` 문자열이 아니라 `code`를 기준으로 오류 유�
 
 ---
 
-# 14. Validation 규칙
+## 14. Validation 규칙
 
 | 필드 | Validation |
 |---|---|
@@ -581,7 +581,7 @@ Validation 오류는 `GlobalExceptionHandler`에서 처리한다.
 
 ---
 
-# 15. 공통 Error Code
+## 15. 공통 Error Code
 
 | Error Code | HTTP | 설명 |
 |---|---:|---|
@@ -627,7 +627,7 @@ Validation 오류는 `GlobalExceptionHandler`에서 처리한다.
 
 ---
 
-# 16. 전체 Endpoint
+## 16. 전체 Endpoint
 
 | ID | Method | Endpoint | 설명 | 권한 |
 |---|---|---|---|---|
@@ -675,21 +675,21 @@ Validation 오류는 `GlobalExceptionHandler`에서 처리한다.
 
 ---
 
-# Auth
+## Auth
 
-# 17. AUTH-001 이메일 인증번호 발송
+## 17. AUTH-001 이메일 인증번호 발송
 
-### 기능 설명
+#### 기능 설명
 
 회원가입 또는 비밀번호 재설정 과정에서 사용자가 입력한 이메일의 소유 여부를 확인하기 위한 인증번호를 발급한다.
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/email-verifications
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -703,7 +703,7 @@ POST /api/auth/email-verifications
 | `email` | String | Y | 인증할 이메일을 전달한다 |
 | `purpose` | Enum | Y | `SIGNUP`, `PASSWORD_RESET` 중 하나를 전달한다 |
 
-### 처리 방식
+#### 처리 방식
 
 `purpose=SIGNUP`이면 `users.user_email` 중복 여부를 확인한다.
 
@@ -732,7 +732,7 @@ verified_at = NULL
 
 `PASSWORD_RESET` 요청에서는 가입 여부를 외부에 노출하지 않도록 존재하지 않는 이메일에도 동일한 성공 응답을 반환한다.
 
-### Success
+#### Success
 
 ```json
 {
@@ -747,15 +747,15 @@ verified_at = NULL
 
 ---
 
-# 18. AUTH-002 이메일 인증번호 확인
+## 18. AUTH-002 이메일 인증번호 확인
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/email-verifications/confirm
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -765,7 +765,7 @@ POST /api/auth/email-verifications/confirm
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 `target_type=EMAIL`, `target_value=email`, `purpose`가 일치하는 가장 최근 인증 레코드를 조회한다.
 
@@ -781,7 +781,7 @@ POST /api/auth/email-verifications/confirm
 
 토큰 원문은 Response에 반환하고 DB에는 해시값과 만료시간만 저장한다.
 
-### SIGNUP Response
+#### SIGNUP Response
 
 ```json
 {
@@ -794,7 +794,7 @@ POST /api/auth/email-verifications/confirm
 }
 ```
 
-### PASSWORD_RESET Response
+#### PASSWORD_RESET Response
 
 ```json
 {
@@ -809,15 +809,15 @@ POST /api/auth/email-verifications/confirm
 
 ---
 
-# 19. AUTH-003 로그인 아이디 중복확인
+## 19. AUTH-003 로그인 아이디 중복확인
 
-### Endpoint
+#### Endpoint
 
 ```http
 GET /api/auth/login-id/availability?loginId=patient01
 ```
 
-### 처리 방식
+#### 처리 방식
 
 `users.login_id` 존재 여부를 조회한다.
 
@@ -827,7 +827,7 @@ GET /api/auth/login-id/availability?loginId=patient01
 
 DB UNIQUE 제약을 최종 중복 방어 수단으로 사용한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -842,19 +842,19 @@ DB UNIQUE 제약을 최종 중복 방어 수단으로 사용한다.
 
 ---
 
-# 20. AUTH-004 환자 회원가입
+## 20. AUTH-004 환자 회원가입
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/patients/signup
 ```
 
-### 기능 설명
+#### 기능 설명
 
 환자가 로그인 아이디, 이메일, 비밀번호를 이용해 계정을 생성한다. 이름은 회원가입 시 입력하지 않는다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -864,7 +864,7 @@ POST /api/auth/patients/signup
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 `loginId` 중복 여부를 확인한다.
 
@@ -898,7 +898,7 @@ current_input_method = EYE_TRACKING
 
 `users`와 `user_setting` 생성을 하나의 Transaction으로 처리한다.
 
-### Success
+#### Success
 
 ```http
 201 Created
@@ -921,19 +921,19 @@ current_input_method = EYE_TRACKING
 
 ---
 
-# 21. AUTH-005 의료진 회원가입
+## 21. AUTH-005 의료진 회원가입
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/staff/signup
 ```
 
-### 기능 설명
+#### 기능 설명
 
 의료진이 로그인 아이디, 이메일, 비밀번호, 병원 초대코드를 이용해 계정을 생성한다. 이름은 회원가입 시 입력하지 않는다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -944,7 +944,7 @@ POST /api/auth/staff/signup
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 로그인 아이디와 이메일 중복을 확인한다.
 
@@ -960,7 +960,7 @@ POST /api/auth/staff/signup
 
 `users`와 `staff` 생성은 하나의 Transaction으로 처리한다.
 
-### Success
+#### Success
 
 ```json
 {
@@ -984,21 +984,21 @@ POST /api/auth/staff/signup
 
 ---
 
-# 22. AUTH-006 로그인
+## 22. AUTH-006 로그인
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/login
 ```
 
-### 기능 설명
+#### 기능 설명
 
 PATIENT와 STAFF가 동일한 API에서 `loginId + password` 방식으로 로그인한다.
 
 이메일, 이름, PIN은 로그인 수단으로 사용하지 않는다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -1007,7 +1007,7 @@ PATIENT와 STAFF가 동일한 API에서 `loginId + password` 방식으로 로그
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 `users.login_id`로 사용자를 조회한다.
 
@@ -1019,7 +1019,7 @@ PATIENT와 STAFF가 동일한 API에서 `loginId + password` 방식으로 로그
 
 Refresh Token 원문은 HttpOnly Cookie에 저장하고 DB에는 해시값만 저장한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1039,23 +1039,23 @@ Refresh Token 원문은 HttpOnly Cookie에 저장하고 DB에는 해시값만 �
 
 ---
 
-# 23. AUTH-007 Access Token 재발급
+## 23. AUTH-007 Access Token 재발급
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/token/refresh
 ```
 
-### 기능 설명
+#### 기능 설명
 
 Access Token이 만료된 경우 HttpOnly Cookie의 Refresh Token을 이용해 새로운 Access Token을 발급한다.
 
-### Request
+#### Request
 
 Request Body를 사용하지 않는다.
 
-### 처리 방식
+#### 처리 방식
 
 Cookie에서 Refresh Token을 가져온다.
 
@@ -1073,7 +1073,7 @@ Refresh Token을 해시한 후 `refresh_token.token_hash`를 조회한다.
 
 Refresh Token Rotation을 적용해 이미 사용한 Refresh Token을 재사용할 수 없도록 한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1090,19 +1090,19 @@ Refresh Token Rotation을 적용해 이미 사용한 Refresh Token을 재사용�
 
 ---
 
-# 24. AUTH-008 로그아웃
+## 24. AUTH-008 로그아웃
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/logout
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 브라우저에 발급된 Refresh Token을 폐기하고 Refresh Cookie를 제거한다.
 
-### 처리 방식
+#### 처리 방식
 
 Refresh Cookie가 존재하면 해당 token hash를 조회한다.
 
@@ -1114,7 +1114,7 @@ Frontend는 메모리에 보관한 Access Token을 제거한다.
 
 이미 토큰이 없거나 폐기된 상태에서도 로그아웃 요청은 멱등적으로 성공 처리한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1127,15 +1127,15 @@ Frontend는 메모리에 보관한 Access Token을 제거한다.
 
 ---
 
-# 25. AUTH-009 비밀번호 재설정
+## 25. AUTH-009 비밀번호 재설정
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/auth/password/reset
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1144,7 +1144,7 @@ POST /api/auth/password/reset
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 전달받은 resetToken을 해시한다.
 
@@ -1164,23 +1164,23 @@ E2EE 개인키는 Backend에서 관리하지 않으므로 비밀번호 재설정
 
 ---
 
-# User
+## User
 
-# 26. USER-001 내 정보 조회
+## 26. USER-001 내 정보 조회
 
-### Endpoint
+#### Endpoint
 
 ```http
 GET /api/users/me
 ```
 
-### 기능 설명
+#### 기능 설명
 
 마이페이지에서 현재 로그인 사용자의 계정 정보와 이름 설정 상태를 조회한다.
 
 PATIENT와 STAFF 모두 사용한다.
 
-### 처리 방식
+#### 처리 방식
 
 JWT에서 currentUserId를 가져온다.
 
@@ -1188,7 +1188,7 @@ JWT에서 currentUserId를 가져온다.
 
 `user_name`이 있으면 해당 값을 `displayName`으로 사용하고 이름이 없으면 `login_id`를 사용한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1211,21 +1211,21 @@ JWT에서 currentUserId를 가져온다.
 
 ---
 
-# 27. USER-002 이름 설정·수정·삭제
+## 27. USER-002 이름 설정·수정·삭제
 
-### Endpoint
+#### Endpoint
 
 ```http
 PATCH /api/users/me
 ```
 
-### 기능 설명
+#### 기능 설명
 
 가입 이후 마이페이지에서 PATIENT와 STAFF가 선택적으로 이름을 설정하거나 변경한다.
 
 이름은 로그인 식별자로 사용하지 않고 화면 표시용으로 사용한다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -1241,7 +1241,7 @@ PATCH /api/users/me
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자를 조회한다.
 
@@ -1251,7 +1251,7 @@ trim 결과가 blank이면 NULL로 변환한다.
 
 `users.user_name`을 변경한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1268,19 +1268,19 @@ trim 결과가 blank이면 NULL로 변환한다.
 
 ---
 
-# 28. USER-003 전화번호 인증번호 발송
+## 28. USER-003 전화번호 인증번호 발송
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/users/me/phone-verifications
 ```
 
-### 기능 설명
+#### 기능 설명
 
 PATIENT가 친구 등록과 SMS 채팅 기능을 사용하기 전에 본인 전화번호 인증번호를 요청한다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -1288,7 +1288,7 @@ PATIENT가 친구 등록과 SMS 채팅 기능을 사용하기 전에 본인 전�
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 role이 PATIENT인지 확인한다.
 
@@ -1313,7 +1313,7 @@ verified_at = NULL
 
 SMS Provider를 통해 원본 인증번호를 발송한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1328,15 +1328,15 @@ SMS Provider를 통해 원본 인증번호를 발송한다.
 
 ---
 
-# 29. USER-004 전화번호 인증 확인
+## 29. USER-004 전화번호 인증 확인
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/users/me/phone-verifications/confirm
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1345,7 +1345,7 @@ POST /api/users/me/phone-verifications/confirm
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 최신 `PHONE_VERIFY` 인증 레코드를 조회한다.
 
@@ -1364,19 +1364,19 @@ users.is_sms_verified = TRUE
 
 ---
 
-# 30. USER-005 회원탈퇴
+## 30. USER-005 회원탈퇴
 
-### Endpoint
+#### Endpoint
 
 ```http
 DELETE /api/users/me
 ```
 
-### 기능 설명
+#### 기능 설명
 
 PATIENT와 STAFF 모두 담당 관계 유무와 관계없이 회원탈퇴를 수행한다.
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 Refresh Token을 모두 폐기한다.
 
@@ -1415,7 +1415,7 @@ UPDATE처럼 두 컬럼을 같은 statement에서 함께 변경해 정상 상태
 `is_withdrawn TRUE`)가 되며, CHAT-002는 이 상태의 상대를 `displayName = "탈퇴한 사용자"`로 표시한다(§53).
 과거 메시지의 탈퇴 사용자 표시도 동일하게 `탈퇴한 사용자`로 반환한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1428,15 +1428,15 @@ UPDATE처럼 두 컬럼을 같은 statement에서 함께 변경해 정상 상태
 
 ---
 
-# UserSetting
+## UserSetting
 
-# 31. SET-001 사용자 입력 설정 조회
+## 31. SET-001 사용자 입력 설정 조회
 
 ```http
 GET /api/users/me/settings
 ```
 
-### Response
+#### Response
 
 ```json
 {
@@ -1453,13 +1453,13 @@ GET /api/users/me/settings
 
 ---
 
-# 32. SET-002 사용자 입력 설정 수정
+## 32. SET-002 사용자 입력 설정 수정
 
 ```http
 PATCH /api/users/me/settings
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1480,19 +1480,19 @@ MOUTH
 
 ---
 
-# Staff
+## Staff
 
-# 33. STAFF-001 의료진 정보 조회
+## 33. STAFF-001 의료진 정보 조회
 
 ```http
 GET /api/staff/me
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 로그인 의료진의 사용자 정보와 소속 병원을 조회한다.
 
-### 처리 방식
+#### 처리 방식
 
 JWT userId로 `users`와 `staff`를 조회한다.
 
@@ -1500,7 +1500,7 @@ JWT userId로 `users`와 `staff`를 조회한다.
 
 이름이 없으면 `loginId`를 `displayName`으로 반환한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1524,19 +1524,19 @@ JWT userId로 `users`와 `staff`를 조회한다.
 
 ---
 
-# 34. STAFF-002 담당 환자 목록 조회
+## 34. STAFF-002 담당 환자 목록 조회
 
 ```http
 GET /api/staff/me/patients
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 로그인 의료진에게 연결된 담당 환자 관계를 조회한다.
 
 담당 환자 관계는 의료진의 환자 관리 기능에 사용한다. 병원 채팅 상대 목록이나 병원 채팅 접근 권한에는 사용하지 않는다.
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자 ID로 `staff`를 조회한다.
 
@@ -1546,7 +1546,7 @@ GET /api/staff/me/patients
 
 환자 이름이 있으면 이름을 표시하고 없으면 userId를 표시한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1567,13 +1567,13 @@ GET /api/staff/me/patients
 
 ---
 
-# 35. STAFF-003 담당 환자 추가
+## 35. STAFF-003 담당 환자 추가
 
 ```http
 POST /api/staff/me/patients
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1581,11 +1581,11 @@ POST /api/staff/me/patients
 }
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 의료진과 지정한 PATIENT 사용자 사이에 담당 관계를 생성한다.
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자가 STAFF인지 확인한다.
 
@@ -1597,7 +1597,7 @@ POST /api/staff/me/patients
 
 존재하지 않으면 `staff_patient_assignment`를 생성한다.
 
-### Success
+#### Success
 
 ```http
 201 Created
@@ -1605,13 +1605,13 @@ POST /api/staff/me/patients
 
 ---
 
-# 36. STAFF-004 담당 환자 해제
+## 36. STAFF-004 담당 환자 해제
 
 ```http
 DELETE /api/staff/me/patients/{patientUserId}
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 `staff_id`와 `patientUserId` 조합의 assignment를 조회한다.
 
@@ -1623,21 +1623,21 @@ DELETE /api/staff/me/patients/{patientUserId}
 
 ---
 
-# E2EE
+## E2EE
 
-# 37. E2EE-001 공개키 등록
+## 37. E2EE-001 공개키 등록
 
 ```http
 POST /api/e2ee/keys
 ```
 
-### 기능 설명
+#### 기능 설명
 
 Frontend에서 생성한 현재 사용자의 E2EE 공개키를 서버에 등록한다.
 
 개인키는 Request에 포함하지 않는다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -1647,7 +1647,7 @@ Frontend에서 생성한 현재 사용자의 E2EE 공개키를 서버에 등록�
 
 `keyVersion`은 클라이언트가 지정하지 않는다. 서버가 결정한다.
 
-### 처리 방식
+#### 처리 방식
 
 JWT에서 currentUserId를 조회한다.
 
@@ -1661,7 +1661,7 @@ JWT에서 currentUserId를 조회한다.
 
 개인키는 Backend에서 생성하거나 저장하지 않는다.
 
-### Success
+#### Success
 
 ```http
 201 Created
@@ -1680,17 +1680,17 @@ JWT에서 currentUserId를 조회한다.
 
 ---
 
-# 38. E2EE-002 내 공개키 등록 상태 조회
+## 38. E2EE-002 내 공개키 등록 상태 조회
 
 ```http
 GET /api/e2ee/keys/me
 ```
 
-### 기능 설명
+#### 기능 설명
 
 Frontend가 현재 로그인 사용자의 공개키 등록 여부와 현재 keyVersion을 확인한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1707,17 +1707,17 @@ Frontend가 현재 로그인 사용자의 공개키 등록 여부와 현재 keyV
 
 ---
 
-# 39. E2EE-003 사용자 공개키 조회
+## 39. E2EE-003 사용자 공개키 조회
 
 ```http
 GET /api/e2ee/users/{userId}/public-key
 ```
 
-### 기능 설명
+#### 기능 설명
 
 병원 채팅 메시지를 암호화하기 위해 상대 내부 회원의 현재 공개키를 조회한다.
 
-### 처리 방식
+#### 처리 방식
 
 대상 사용자가 존재하는지 확인한다.
 
@@ -1725,7 +1725,7 @@ GET /api/e2ee/users/{userId}/public-key
 
 공개키가 없으면 `E2EE_TARGET_KEY_REQUIRED`를 반환한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1742,27 +1742,27 @@ GET /api/e2ee/users/{userId}/public-key
 
 ---
 
-# Memo
+## Memo
 
-# 40. MEMO-001 메모 조회
+## 40. MEMO-001 메모 조회
 
 ```http
 GET /api/memos
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 로그인 환자의 암호화된 개인 메모 목록을 조회한다.
 
 Backend는 메모 평문을 복호화하지 않는다.
 
-### 처리 방식
+#### 처리 방식
 
 `memo.user_id=currentUserId`인 데이터만 조회한다.
 
 최근 수정 순으로 정렬한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1788,13 +1788,13 @@ Frontend가 사용자 개인키로 ciphertext를 복호화한다.
 
 ---
 
-# 41. MEMO-002 메모 등록
+## 41. MEMO-002 메모 등록
 
 ```http
 POST /api/memos
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1806,7 +1806,7 @@ POST /api/memos
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 E2EE 공개키 등록 여부를 확인한다.
 
@@ -1818,7 +1818,7 @@ ciphertext 형식과 최대 크기를 검증한다.
 
 Backend에서는 ciphertext를 복호화하지 않는다.
 
-### Success
+#### Success
 
 ```http
 201 Created
@@ -1826,13 +1826,13 @@ Backend에서는 ciphertext를 복호화하지 않는다.
 
 ---
 
-# 42. MEMO-003 메모 수정
+## 42. MEMO-003 메모 수정
 
 ```http
 PATCH /api/memos/{memoId}
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1844,7 +1844,7 @@ PATCH /api/memos/{memoId}
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 E2EE 공개키 등록 여부를 확인한다.
 
@@ -1856,7 +1856,7 @@ PATCH /api/memos/{memoId}
 
 ---
 
-# 43. MEMO-004 메모 삭제
+## 43. MEMO-004 메모 삭제
 
 ```http
 DELETE /api/memos/{memoId}
@@ -1866,15 +1866,15 @@ DELETE /api/memos/{memoId}
 
 ---
 
-# Phrase
+## Phrase
 
-# 44. PHRASE-001 자주 쓰는 문장 조회
+## 44. PHRASE-001 자주 쓰는 문장 조회
 
 ```http
 GET /api/phrases
 ```
 
-### 기능 설명
+#### 기능 설명
 
 마이페이지에서 현재 사용자가 등록한 자주 쓰는 문장을 조회한다.
 
@@ -1882,7 +1882,7 @@ GET /api/phrases
 
 평문은 Frontend에서 복호화한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -1906,19 +1906,19 @@ GET /api/phrases
 
 ---
 
-# 45. PHRASE-002 자주 쓰는 문장 등록
+## 45. PHRASE-002 자주 쓰는 문장 등록
 
 ```http
 POST /api/phrases
 ```
 
-### 기능 설명
+#### 기능 설명
 
 마이페이지의 자주 쓰는 문장 관리 화면에서 새 문장을 등록한다.
 
 현재 사용자의 문장이 이미 3개인 경우 가장 오래된 문장을 삭제하고 새 문장을 저장해 항상 최대 3개를 유지한다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -1931,7 +1931,7 @@ POST /api/phrases
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 E2EE 키 등록 여부를 확인한다.
 
@@ -1952,7 +1952,7 @@ POST /api/phrases
 3개 → 가장 오래된 Phrase DELETE → 신규 Phrase INSERT
 ```
 
-### Response
+#### Response
 
 ```json
 {
@@ -1971,13 +1971,13 @@ POST /api/phrases
 
 ---
 
-# 46. PHRASE-003 자주 쓰는 문장 수정
+## 46. PHRASE-003 자주 쓰는 문장 수정
 
 ```http
 PATCH /api/phrases/{phraseId}
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -1990,7 +1990,7 @@ PATCH /api/phrases/{phraseId}
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자의 E2EE 공개키 등록 여부를 확인한다.
 
@@ -2004,7 +2004,7 @@ ciphertext와 category를 수정한다.
 
 ---
 
-# 47. PHRASE-004 자주 쓰는 문장 삭제
+## 47. PHRASE-004 자주 쓰는 문장 삭제
 
 ```http
 DELETE /api/phrases/{phraseId}
@@ -2016,21 +2016,21 @@ DELETE /api/phrases/{phraseId}
 
 ---
 
-# Friend
+## Friend
 
-# 48. FRIEND-001 SMS 지인 목록 조회
+## 48. FRIEND-001 SMS 지인 목록 조회
 
 ```http
 GET /api/friends
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 환자가 등록한 외부 SMS 연락처를 조회한다.
 
 친구 등록이 완료되면 `friendship`에 저장되므로 별도의 친구 탭 등록 API 없이 이 API 결과에 자동 포함된다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -2049,17 +2049,17 @@ GET /api/friends
 
 ---
 
-# 49. FRIEND-002 SMS 지인 등록
+## 49. FRIEND-002 SMS 지인 등록
 
 ```http
 POST /api/friends
 ```
 
-### 기능 설명
+#### 기능 설명
 
 전화번호 인증이 완료된 PATIENT가 이름과 전화번호로 외부 SMS 지인을 등록한다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -2070,7 +2070,7 @@ POST /api/friends
 
 `name`, `phone` 모두 필수다.
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자가 PATIENT인지 확인한다.
 
@@ -2094,7 +2094,7 @@ status = ACCEPTED
 
 친구 등록 시 SMS 채팅방은 생성하지 않는다.
 
-### Success
+#### Success
 
 ```http
 201 Created
@@ -2102,13 +2102,13 @@ status = ACCEPTED
 
 ---
 
-# 50. FRIEND-003 SMS 지인 수정
+## 50. FRIEND-003 SMS 지인 수정
 
 ```http
 PATCH /api/friends/{friendshipId}
 ```
 
-### Request
+#### Request
 
 ```json
 { "name": "어머니" }
@@ -2125,7 +2125,7 @@ PATCH /api/friends/{friendshipId}
 `name`, `phone`은 각각 선택(optional)이며, 최소 하나는 전달해야 한다. 이 API는 partial update로 동작하며, 전달한
 필드만 수정하고 전달하지 않은 필드는 기존 값을 그대로 유지한다.
 
-### 처리 방식
+#### 처리 방식
 
 PATIENT인지 확인한다.
 
@@ -2144,7 +2144,7 @@ PATIENT인지 확인한다.
 
 ---
 
-# 51. FRIEND-004 SMS 지인 삭제
+## 51. FRIEND-004 SMS 지인 삭제
 
 ```http
 DELETE /api/friends/{friendshipId}
@@ -2156,15 +2156,15 @@ DELETE /api/friends/{friendshipId}
 
 ---
 
-# Chat
+## Chat
 
-# 52. CHAT-001 병원 채팅 연락처 조회
+## 52. CHAT-001 병원 채팅 연락처 조회
 
 ```http
 GET /api/chat-contacts?page=0&size=20&keyword=
 ```
 
-### 기능 설명
+#### 기능 설명
 
 병원 채팅의 친구 탭에 표시할 Look Talk 내부 회원 목록을 조회한다.
 
@@ -2174,7 +2174,7 @@ PATIENT와 STAFF를 모두 조회한다.
 
 현재 로그인 사용자는 목록에서 제외한다.
 
-### 처리 방식
+#### 처리 방식
 
 users를 조회한다.
 
@@ -2184,7 +2184,7 @@ keyword가 있으면 `user_name` 또는 `login_id` 기준으로 검색한다.
 
 각 사용자의 E2EE 공개키 등록 여부를 조회해 `e2eeReady`를 반환한다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -2217,7 +2217,7 @@ keyword가 있으면 `user_name` 또는 `login_id` 기준으로 검색한다.
 
 ---
 
-# 53. CHAT-002 채팅방 목록 조회
+## 53. CHAT-002 채팅방 목록 조회
 
 ```http
 GET /api/chat-rooms
@@ -2230,13 +2230,13 @@ GET /api/chat-rooms?type=HOSPITAL
 GET /api/chat-rooms?type=SMS
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 사용자가 participant로 포함된 이미 생성된 채팅방을 조회한다.
 
 내부 회원 전체 목록은 `CHAT-001`에서 조회하고, 이 API는 실제 생성된 대화방 이력을 조회하는 용도로 사용한다.
 
-### 처리 방식
+#### 처리 방식
 
 현재 userId가 포함된 `chat_participant`를 조회한다.
 
@@ -2246,7 +2246,7 @@ GET /api/chat-rooms?type=SMS
 
 평문 마지막 메시지는 Backend에서 생성하지 않는다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -2276,7 +2276,7 @@ GET /api/chat-rooms?type=SMS
 
 Frontend는 ciphertext를 복호화해 마지막 메시지 미리보기를 표시한다.
 
-### target (SMS room)
+#### target (SMS room)
 
 `roomType=SMS`인 room의 `target`은 회원이 아닌 외부 지인이므로 `userId`/`displayName`이 없다.
 
@@ -2302,7 +2302,7 @@ friendship의 이름/전화번호가 수정되거나 FRIEND-004로 friendship이
 HOSPITAL room의 `target.type`은 `USER`, SMS room의 `target.type`은 `SMS`다. 두 경우 모두 같은 JSON 구조를
 공유하되 해당 없는 필드(`USER`의 `phone`, `SMS`의 `userId`/`displayName`)는 `null`로 채운다.
 
-### target (탈퇴한 HOSPITAL 상대)
+#### target (탈퇴한 HOSPITAL 상대)
 
 HOSPITAL room의 상대가 회원탈퇴(USER-005)한 경우에도 room/message 이력은 삭제하지 않고 그대로 유지한다.
 이때 `target`은 `CHAT-005`의 기존 탈퇴 사용자 표시 정책(`senderDisplayName="탈퇴한 사용자"`)과 동일하게
@@ -2318,7 +2318,7 @@ HOSPITAL room의 상대가 회원탈퇴(USER-005)한 경우에도 room/message �
 }
 ```
 
-### 메시지가 없는 room
+#### 메시지가 없는 room
 
 CHAT-006(메시지 전송)을 아직 구현하지 않았으므로 message가 하나도 없는 신규 room도 이 목록에 정상적으로
 포함되어야 한다. 이 경우:
@@ -2332,7 +2332,7 @@ message는 존재하지만 현재 사용자용 `message_ciphertext`가 없는 �
 동일하게 `lastMessageEncryptedPayload = null`, `lastMessageAt = null`로 처리한다. 평문 fallback이나 다른
 사용자의 ciphertext를 대신 반환하지 않는다.
 
-### 정렬 기준
+#### 정렬 기준
 
 room은 "가장 최근 활동 시각" 기준 내림차순으로 정렬한다. 가장 최근 활동 시각은 다음과 같이 정의한다.
 
@@ -2343,13 +2343,13 @@ room은 "가장 최근 활동 시각" 기준 내림차순으로 정렬한다. �
 
 ---
 
-# 54. CHAT-003 병원 채팅방 조회·생성
+## 54. CHAT-003 병원 채팅방 조회·생성
 
 ```http
 POST /api/chat-rooms/hospital
 ```
 
-### 기능 설명
+#### 기능 설명
 
 병원 채팅 친구 탭에서 선택한 내부 회원과의 기존 1:1 채팅방을 반환하거나 새 채팅방을 생성한다.
 
@@ -2362,7 +2362,7 @@ STAFF ↔ PATIENT
 STAFF ↔ STAFF
 ```
 
-### Request
+#### Request
 
 ```json
 {
@@ -2370,7 +2370,7 @@ STAFF ↔ STAFF
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자와 target 사용자를 조회한다.
 
@@ -2390,11 +2390,11 @@ room과 participant 생성을 하나의 Transaction으로 처리한다.
 
 `staff_patient_assignment`와 hospital 소속은 검사하지 않는다.
 
-### Success
+#### Success
 
 기존 room이면 `200 OK`, 신규 room이면 `201 Created`를 반환한다.
 
-### Response
+#### Response
 
 `CHAT-002`의 room 목록 항목과 혼동되지 않도록, find-or-create 응답은 방금 조회/생성된 room 자체를 가리키는
 데 필요한 최소 정보만 반환한다(상대방 정보/마지막 메시지는 포함하지 않는다). 이후 상대방 표시나 대화 내용이
@@ -2418,17 +2418,17 @@ room과 participant 생성을 하나의 Transaction으로 처리한다.
 
 ---
 
-# 55. CHAT-004 SMS 채팅방 조회·생성
+## 55. CHAT-004 SMS 채팅방 조회·생성
 
 ```http
 POST /api/chat-rooms/sms
 ```
 
-### 기능 설명
+#### 기능 설명
 
 친구 채팅 탭에서 등록된 외부 친구를 선택했을 때 기존 SMS 채팅방을 반환하거나 새 채팅방을 생성한다.
 
-### Request
+#### Request
 
 ```json
 {
@@ -2436,7 +2436,7 @@ POST /api/chat-rooms/sms
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 현재 사용자가 PATIENT인지 확인한다.
 
@@ -2470,12 +2470,12 @@ external_phone = friendship.friend_phone
 
 room과 participant 생성을 하나의 Transaction으로 처리한다.
 
-### Success
+#### Success
 
 `CHAT-003`과 동일한 find-or-create semantics를 따른다: 기존 room이면 `200 OK`, 신규 room이면 `201 Created`를
 반환한다.
 
-### Response
+#### Response
 
 `CHAT-003`과 동일한 최소 room 응답 구조를 사용한다.
 
@@ -2494,7 +2494,7 @@ room과 participant 생성을 하나의 Transaction으로 처리한다.
 
 ---
 
-# 56. CHAT-005 메시지 조회
+## 56. CHAT-005 메시지 조회
 
 ```http
 GET /api/chat-rooms/{roomId}/messages?size=50
@@ -2506,13 +2506,13 @@ GET /api/chat-rooms/{roomId}/messages?size=50
 GET /api/chat-rooms/{roomId}/messages?beforeMessageId=300&size=50
 ```
 
-### 기능 설명
+#### 기능 설명
 
 현재 사용자가 참여 중인 채팅방의 메시지 이력을 조회한다.
 
 Backend는 현재 사용자가 복호화할 수 있는 ciphertext만 반환한다.
 
-### 처리 방식
+#### 처리 방식
 
 roomId로 `chat_room`을 조회한다. 없으면 `CHAT_ROOM_NOT_FOUND`(404)를 반환한다.
 
@@ -2532,7 +2532,7 @@ CHAT-005는 현재 사용자의 active E2EE key 등록 여부를 선행조건으
 저장된 `algorithm`/`keyVersion`/`ciphertext`를 그대로 반환한다. 재암호화하거나 현재 active keyVersion으로
 바꾸지 않는다. Frontend가 과거 개인키로 복호화하는 구조를 전제로 한다.
 
-### 정렬 및 cursor pagination
+#### 정렬 및 cursor pagination
 
 메시지는 `messageId` 내림차순(최신 → 과거)으로 정렬한다.
 
@@ -2564,7 +2564,7 @@ GET .../messages?beforeMessageId=499&size=2
 
 같은 message가 페이지 사이에서 중복 반환되지 않는다.
 
-### sender 표시
+#### sender 표시
 
 `senderParticipantId`는 `message.sender_participant_id`다. sender participant의 상태(§3.8)에 따라 다음
 세 가지로 반환한다.
@@ -2587,7 +2587,7 @@ GET .../messages?beforeMessageId=499&size=2
 사용한다(§53 SMS target snapshot 정책과 동일). friendship이 이후 삭제되어도 표시가 바뀌지 않는다. 외부
 SMS sender를 "탈퇴한 사용자"로 표시하지 않는다.
 
-### Response
+#### Response
 
 ```json
 {
@@ -2620,7 +2620,7 @@ SMS sender를 "탈퇴한 사용자"로 표시하지 않는다.
 
 ---
 
-# 57. CHAT-006 메시지 전송
+## 57. CHAT-006 메시지 전송
 
 ```http
 POST /api/chat-rooms/{roomId}/messages
@@ -2628,7 +2628,7 @@ POST /api/chat-rooms/{roomId}/messages
 
 room type에 따라 HOSPITAL과 SMS 요청을 구분한다.
 
-### 공통 처리 방식
+#### 공통 처리 방식
 
 roomId로 `chat_room`을 조회한다. 없으면 `CHAT_ROOM_NOT_FOUND`(404)를 반환한다.
 
@@ -2645,7 +2645,7 @@ HOSPITAL: ciphertexts 필수, content는 사용 금지(값이 있으면 COMMON_V
 SMS     : content 필수, ciphertexts는 사용 금지(값이 있으면 COMMON_VALIDATION_ERROR 400)
 ```
 
-### Success
+#### Success
 
 HOSPITAL/SMS 모두 동일한 Response 구조와 `200 OK`를 사용한다.
 
@@ -2663,9 +2663,9 @@ HOSPITAL/SMS 모두 동일한 Response 구조와 `200 OK`를 사용한다.
 
 ciphertext는 Response에 다시 포함하지 않는다. 전송한 메시지를 확인해야 하면 `CHAT-005`로 조회한다.
 
-## 57.1 HOSPITAL 메시지
+### 57.1 HOSPITAL 메시지
 
-### Request
+#### Request
 
 ```json
 {
@@ -2687,7 +2687,7 @@ ciphertext는 Response에 다시 포함하지 않는다. 전송한 메시지를 
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 room type이 HOSPITAL인지 확인한다.
 
@@ -2739,9 +2739,9 @@ Backend는 어떤 ciphertext도 복호화하지 않는다. Request ciphertext의
 
 저장 commit 이후 사용자별 WebSocket 이벤트를 발행한다(§58, 다음 단계에서 연결).
 
-## 57.2 SMS 메시지
+### 57.2 SMS 메시지
 
-### Request
+#### Request
 
 ```json
 {
@@ -2750,7 +2750,7 @@ Backend는 어떤 ciphertext도 복호화하지 않는다. Request ciphertext의
 }
 ```
 
-### 처리 방식
+#### 처리 방식
 
 room type이 SMS인지 확인한다.
 
@@ -2790,11 +2790,11 @@ Success Response는 HOSPITAL과 동일하게 공통 절 "### Success"(§57)를 �
 
 ---
 
-# WebSocket
+## WebSocket
 
-# 58. WebSocket 실시간 메시지
+## 58. WebSocket 실시간 메시지
 
-### 구현 목적
+#### 구현 목적
 
 REST API를 메시지 생성의 Source of Truth로 사용하고 WebSocket은 저장 완료된 메시지를 실시간으로 전달하는 용도로 사용한다.
 
@@ -2805,7 +2805,7 @@ POST /messages
 → WebSocket Event 발행
 ```
 
-### 연결 Endpoint
+#### 연결 Endpoint
 
 ```text
 /ws
@@ -2827,7 +2827,7 @@ Authorization: Bearer {accessToken}
 있다"는 뜻은 아니다. STOMP CONNECT에 유효한 JWT가 없으면 그 세션은 연결을 완료하지 못한다(CONNECTED 프레임을
 받지 못한다). REST API의 bearerAuth 정책은 이 경계와 무관하게 그대로 유지한다.
 
-### 구독
+#### 구독
 
 사용자별 목적지를 사용한다.
 
@@ -2844,7 +2844,7 @@ room 전체 Topic으로 동일 ciphertext를 broadcast하지 않는다. 사용�
 (`POST /api/chat-rooms/{roomId}/messages`)만 Source of Truth이며, WebSocket으로 메시지를 만드는 경로는
 제공하지 않는다.
 
-### Event
+#### Event
 
 ```json
 {
@@ -2871,23 +2871,23 @@ HOSPITAL room은 활성 내부 participant 각각에게 그 사용자용 `encryp
 (sender 본인도 포함해 자기 ciphertext Event를 받는다). SMS room은 현재 PATIENT에게만 Event를 보내며, 외부
 SMS 상대는 Look Talk 사용자가 아니므로 WebSocket 수신자가 아니다.
 
-### 전달 실패·오프라인 정책
+#### 전달 실패·오프라인 정책
 
 DB commit 성공이 곧 `CHAT-006` 메시지 생성 성공이다. WebSocket publish는 이후 이어지는 실시간 전달
 최적화이며, publish 실패나 수신자의 오프라인 상태가 이미 commit된 메시지나 REST 응답을 무효화하지 않는다.
 재연결한 client는 누락된 이력을 `CHAT-005`로 복구한다. 즉 WebSocket Event는 best-effort 실시간 전달이지
 메시지의 영속적 저장·재전송 채널이 아니다.
 
-### 적용 범위
+#### 적용 범위
 
 이번 단계는 단일 서버 인스턴스의 Spring simple broker를 기준으로 한다. 여러 backend 인스턴스로 scale-out될
 때의 instance 간 WebSocket 전달(예: Redis/RabbitMQ broker relay)은 이번 범위 밖이다.
 
 ---
 
-# 59. 외부 SMS 수신
+## 59. 외부 SMS 수신
 
-### Endpoint
+#### Endpoint
 
 ```http
 POST /api/integrations/sms/inbound
@@ -2897,7 +2897,7 @@ SMS Provider Webhook 전용 Endpoint로 사용한다.
 
 Provider가 확정되면 Provider별 Request DTO와 Signature 검증 방식을 작성한다.
 
-### 처리 방식
+#### 처리 방식
 
 Webhook Signature를 검증한다.
 
@@ -2917,9 +2917,9 @@ Transaction commit 후 환자 WebSocket 목적지로 암호화 메시지 Event�
 
 ---
 
-# InputSession
+## InputSession
 
-# 60. InputSession 설계 보류
+## 60. InputSession 설계 보류
 
 `InputSession`은 현재 API 계약을 확정하지 않는다.
 
@@ -2938,7 +2938,7 @@ GET /api/input-sessions/summary
 Raw 카메라 프레임, 얼굴 영상 등 생체 원시 데이터는 향후 InputSession 설계에서도 서버 저장 대상에 포함하지 않는 것을 기본 원칙으로 한다.
 
 
-# 61. 백엔드 패키지 구조
+## 61. 백엔드 패키지 구조
 
 ```text
 com.looktalk.backend
@@ -2995,7 +2995,7 @@ SMS inbound/outbound에서는 Backend가 사용자의 공개키를 이용해 저
 
 ---
 
-# 62. User Entity
+## 62. User Entity
 
 `user_name`은 nullable로 매핑한다.
 
@@ -3010,7 +3010,7 @@ private String userName;
 
 ---
 
-# 63. 사용자 표시명 처리
+## 63. 사용자 표시명 처리
 
 여러 Service에서 표시 이름 로직을 반복하지 않는다.
 
@@ -3029,7 +3029,7 @@ User Response, Staff Response, 담당 환자 Response, 내부 채팅 연락처, 
 
 ---
 
-# 64. E2EE DTO 처리
+## 64. E2EE DTO 처리
 
 공통 암호화 DTO를 사용한다.
 
@@ -3062,7 +3062,7 @@ public record RecipientCiphertext(
 
 ---
 
-# 65. Exception 구현
+## 65. Exception 구현
 
 Service에서 비즈니스 조건 위반 시 `BusinessException`을 발생시킨다.
 
@@ -3078,7 +3078,7 @@ Spring Security의 401, 403도 가능한 한 동일한 JSON Error Response 형�
 
 ---
 
-# 66. Transaction 적용 대상
+## 66. Transaction 적용 대상
 
 | 기능 | Transaction 범위 |
 |---|---|
@@ -3102,7 +3102,7 @@ SMS 전송은 Provider가 요청을 수락한 이후 메시지 metadata와 ciphe
 
 ---
 
-# 67. 채팅방 중복 생성 방지
+## 67. 채팅방 중복 생성 방지
 
 병원 채팅방과 SMS 채팅방은 `chat_room.conversation_key`를 이용해 동일 상대에 대한 중복 생성을 방지한다.
 
@@ -3124,7 +3124,7 @@ Service는 Transaction 안에서 기존 room을 먼저 조회하고 없으면 �
 
 ---
 
-# 68. 로그 보안 정책
+## 68. 로그 보안 정책
 
 다음 값은 Application Log에 기록하지 않는다.
 
@@ -3152,7 +3152,7 @@ DB 연결 비밀번호, JWT Secret, SMS Provider Secret, 메일 Provider Secret�
 
 ---
 
-# 69. Swagger 구현 기준
+## 69. Swagger 구현 기준
 
 각 API에 `@Operation`으로 기능과 서버 처리 기준을 작성한다.
 
@@ -3171,7 +3171,7 @@ E2EE ciphertext 필드에는 실제 평문 예제를 넣지 않고 Base64 placeh
 
 ---
 
-# 70. 구현 순서
+## 70. 구현 순서
 
 백엔드 작업은 다음 순서로 진행한다.
 
@@ -3243,7 +3243,7 @@ E2EE ciphertext 필드에는 실제 평문 예제를 넣지 않고 Base64 placeh
 
 ---
 
-# 71. 구현 전 확정이 필요한 항목
+## 71. 구현 전 확정이 필요한 항목
 
 | 항목 | 현재 명세 기준 |
 |---|---|
@@ -3279,7 +3279,7 @@ E2EE ciphertext 필드에는 실제 평문 예제를 넣지 않고 Base64 placeh
 
 ---
 
-# 72. E2EE 운영 제약
+## 72. E2EE 운영 제약
 
 v1에서는 개인키를 Backend에 저장하지 않는다.
 

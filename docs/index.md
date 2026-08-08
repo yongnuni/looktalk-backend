@@ -13,4 +13,6 @@ LookTalk Backend의 API 명세와 실제 구현 문서입니다.
 ## 문서
 
 - [API 명세서](LookTalk_Backend_API_Spec_v2.1.md) — Frontend와 맺는 API 계약(Endpoint, Request/Response, ErrorCode)
+- [Database 문서](database.md) — 실제 PostgreSQL 스키마(Flyway V1~V7), ERD, 테이블/제약조건 정리
 - [Backend 구현 문서](LookTalk_Backend_Implementation.md) — 실제 코드가 어떻게 구현되어 있는지에 대한 설명(구조, 보안, DB, E2EE, WebSocket 등)
+- swagger : 서버 실행 후 'http://localhost:8080/swagger-ui/index.html' 에서 확인 가능
