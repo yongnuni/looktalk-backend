@@ -34,6 +34,8 @@ jobs:
       SPRING_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:5432/looktalk
       SPRING_DATASOURCE_USERNAME: looktalk
       SPRING_DATASOURCE_PASSWORD: looktalk
+      JWT_SECRET: ${{ secrets.JWT_SECRET_TEST }}
+      OTP_HMAC_SECRET: ${{ secrets.OTP_HMAC_SECRET_TEST }}
 
     steps:
       - name: Checkout source code
