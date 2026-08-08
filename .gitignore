@@ -6,6 +6,9 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### MkDocs ###
+site/
+
 ### STS ###
 .apt_generated
 .classpath
