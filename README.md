@@ -2,6 +2,8 @@
 
 얼굴 신호 기반 AAC 시스템 **Look Talk**의 백엔드 서버입니다.
 
+[📌 LookTalk Backend Docs](https://yongnuni.github.io/looktalk-backend/)
+
 ---
 
 ## Tech Stack
