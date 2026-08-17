@@ -12,6 +12,7 @@ import com.looktalk.backend.chat.repository.ChatParticipantRepository;
 import com.looktalk.backend.chat.repository.ChatRoomRepository;
 import com.looktalk.backend.chat.repository.MessageCiphertextRepository;
 import com.looktalk.backend.chat.repository.MessageRepository;
+import com.looktalk.backend.chat.support.ChatDisplayNameResolver;
 import com.looktalk.backend.e2ee.dto.EncryptedPayload;
 import com.looktalk.backend.e2ee.repository.UserE2eeKeyRepository;
 import com.looktalk.backend.global.exception.BusinessException;
@@ -21,12 +22,13 @@ import com.looktalk.backend.user.entity.User;
 import com.looktalk.backend.user.entity.UserRole;
 import com.looktalk.backend.user.repository.FriendshipRepository;
 import com.looktalk.backend.user.repository.UserRepository;
-import com.looktalk.backend.user.support.DisplayNameResolver;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -47,6 +49,7 @@ public class ChatRoomService {
     private final UserRepository userRepository;
     private final UserE2eeKeyRepository userE2eeKeyRepository;
     private final FriendshipRepository friendshipRepository;
+    private final ChatDisplayNameResolver chatDisplayNameResolver;
     private final TransactionTemplate requiresNewTransactionTemplate;
 
     public ChatRoomService(
@@ -57,6 +60,7 @@ public class ChatRoomService {
             UserRepository userRepository,
             UserE2eeKeyRepository userE2eeKeyRepository,
             FriendshipRepository friendshipRepository,
+            ChatDisplayNameResolver chatDisplayNameResolver,
             PlatformTransactionManager transactionManager
     ) {
         this.chatRoomRepository = chatRoomRepository;
@@ -66,6 +70,7 @@ public class ChatRoomService {
         this.userRepository = userRepository;
         this.userE2eeKeyRepository = userE2eeKeyRepository;
         this.friendshipRepository = friendshipRepository;
+        this.chatDisplayNameResolver = chatDisplayNameResolver;
 
         // CHAT-003/004 find-or-create 동시성 처리 전용. 방 생성 시도를 별도의(REQUIRES_NEW) 물리 Transaction으로
         // 격리해, conversation_key UNIQUE 제약 위반으로 실패하더라도 그 실패가 호출 측 Transaction을
@@ -79,6 +84,8 @@ public class ChatRoomService {
     @Transactional(readOnly = true)
     public List<ChatRoomListItemResponse> getChatRooms(String currentUserId, String typeFilter) {
         ChatRoomType roomTypeFilter = parseRoomType(typeFilter);
+        User viewer = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         List<ChatParticipant> myParticipations =
                 chatParticipantRepository.findMyParticipations(currentUserId, roomTypeFilter);
@@ -111,9 +118,21 @@ public class ChatRoomService {
                         .stream()
                         .collect(Collectors.toMap(c -> c.getMessage().getMessageId(), c -> c));
 
+        // Step 8B - viewer가 STAFF일 때만, 조회된 모든 room의 "상대" 내부 participant 중 PATIENT userId
+        // 후보 전체에 대해 alias를 한 번에 배치 조회한다(room 수만큼 반복 조회하지 않기 위함).
+        Set<String> candidatePatientUserIds = participantsByRoom.values().stream()
+                .flatMap(List::stream)
+                .map(ChatParticipant::getUser)
+                .filter(Objects::nonNull)
+                .filter(user -> user.getRole() == UserRole.PATIENT)
+                .map(User::getUserId)
+                .collect(Collectors.toSet());
+        Map<String, String> aliasByPatientUserId =
+                chatDisplayNameResolver.loadAliasesForStaffViewer(viewer, candidatePatientUserIds);
+
         return myParticipations.stream()
                 .map(myParticipation -> toListItemWithSortKey(
-                        myParticipation, participantsByRoom, latestMessageByRoom, ciphertextByMessageId))
+                        myParticipation, participantsByRoom, latestMessageByRoom, ciphertextByMessageId, aliasByPatientUserId))
                 .sorted(Comparator.comparing(RoomWithSortKey::sortKey, Comparator.reverseOrder()))
                 .map(RoomWithSortKey::item)
                 .toList();
@@ -123,7 +142,8 @@ public class ChatRoomService {
             ChatParticipant myParticipation,
             Map<Long, List<ChatParticipant>> participantsByRoom,
             Map<Long, Message> latestMessageByRoom,
-            Map<Long, MessageCiphertext> ciphertextByMessageId
+            Map<Long, MessageCiphertext> ciphertextByMessageId,
+            Map<String, String> aliasByPatientUserId
     ) {
         ChatRoom room = myParticipation.getRoom();
 
@@ -149,7 +169,7 @@ public class ChatRoomService {
         ChatRoomListItemResponse item = new ChatRoomListItemResponse(
                 room.getRoomId(),
                 room.getRoomType().name(),
-                buildTarget(other, room.getRoomType()),
+                buildTarget(other, room.getRoomType(), aliasByPatientUserId),
                 lastMessageEncryptedPayload,
                 lastMessageAt
         );
@@ -159,7 +179,8 @@ public class ChatRoomService {
 
     private static final String WITHDRAWN_USER_DISPLAY_NAME = "탈퇴한 사용자";
 
-    private ChatRoomTargetResponse buildTarget(ChatParticipant other, ChatRoomType roomType) {
+    private ChatRoomTargetResponse buildTarget(
+            ChatParticipant other, ChatRoomType roomType, Map<String, String> aliasByPatientUserId) {
         if (roomType == ChatRoomType.SMS) {
             return new ChatRoomTargetResponse("SMS", null, other.getExternalName(), null, other.getExternalPhone());
         }
@@ -171,8 +192,9 @@ public class ChatRoomService {
             // 과거 userId/loginId/name은 별도로 복구·snapshot하지 않는다.
             return new ChatRoomTargetResponse("USER", null, null, WITHDRAWN_USER_DISPLAY_NAME, null);
         }
-        return new ChatRoomTargetResponse(
-                "USER", otherUser.getUserId(), otherUser.getUserName(), DisplayNameResolver.resolve(otherUser), null);
+        String displayName = chatDisplayNameResolver.withAliasFallback(
+                aliasByPatientUserId.get(otherUser.getUserId()), otherUser);
+        return new ChatRoomTargetResponse("USER", otherUser.getUserId(), otherUser.getUserName(), displayName, null);
     }
 
     private ChatRoomType parseRoomType(String typeFilter) {

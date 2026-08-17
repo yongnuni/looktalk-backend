@@ -3,6 +3,7 @@ package com.looktalk.backend.staff.service;
 import com.looktalk.backend.global.exception.BusinessException;
 import com.looktalk.backend.global.exception.ErrorCode;
 import com.looktalk.backend.staff.dto.StaffMeResponse;
+import com.looktalk.backend.staff.dto.StaffPatientAliasUpdateRequest;
 import com.looktalk.backend.staff.dto.StaffPatientResponse;
 import com.looktalk.backend.staff.entity.Staff;
 import com.looktalk.backend.staff.entity.StaffPatientAssignment;
@@ -72,9 +73,21 @@ public class StaffService {
                 patient.getUserId(),
                 patient.getLoginId(),
                 patient.getUserName(),
-                DisplayNameResolver.resolve(patient),
+                resolveAliasAwareDisplayName(assignment, patient),
+                assignment.getPatientAlias(),
                 assignment.getAssignedAt()
         );
+    }
+
+    // docs/LookTalk_Backend_Phase2_Implementation_Plan_Updated.md 14. patientAlias -> userName -> loginId.
+    // 전역 DisplayNameResolver(userName -> loginId)는 건드리지 않고, "현재 STAFF가 자기 담당 PATIENT를 보는"
+    // 이 문맥에서만 assignment의 alias를 우선한다.
+    private String resolveAliasAwareDisplayName(StaffPatientAssignment assignment, User patient) {
+        String alias = assignment.getPatientAlias();
+        if (alias != null && !alias.isBlank()) {
+            return alias;
+        }
+        return DisplayNameResolver.resolve(patient);
     }
 
     // STAFF-003
@@ -112,6 +125,23 @@ public class StaffService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.STAFF_PATIENT_NOT_ASSIGNED));
 
         assignmentRepository.delete(assignment);
+    }
+
+    // STAFF-005 - 현재 STAFF 자신의 assignment만 수정한다. staffId+patientUserId 조합으로만 조회해 다른
+    // 의료진의 assignment를 잘못 수정할 수 없도록 한다(STAFF-004와 동일한 소유권 검증 패턴).
+    // null/공백(trim 후 blank)은 별칭 삭제(NULL 저장)를 의미하고, 그 외에는 trim한 문자열을 저장한다.
+    @Transactional
+    public StaffPatientResponse updatePatientAlias(String userId, String patientUserId, StaffPatientAliasUpdateRequest request) {
+        Staff staff = findStaffByUserId(userId);
+
+        StaffPatientAssignment assignment = assignmentRepository
+                .findByStaff_StaffIdAndPatientUser_UserId(staff.getStaffId(), patientUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STAFF_PATIENT_NOT_ASSIGNED));
+
+        String trimmedAlias = request.alias() == null ? null : request.alias().trim();
+        assignment.setPatientAlias(trimmedAlias == null || trimmedAlias.isBlank() ? null : trimmedAlias);
+
+        return toPatientResponse(assignment);
     }
 
     // docs/LookTalk_Backend_API_Spec_v2.1.md 33~36 - STAFF 전용 API.

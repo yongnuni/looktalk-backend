@@ -27,6 +27,8 @@ public enum ErrorCode {
     AUTH_REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않는다"),
     AUTH_REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "Refresh Token이 만료된다"),
 
+    EMAIL_SEND_FAILED(HttpStatus.BAD_GATEWAY, "이메일 발송에 실패한다"),
+
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자 데이터가 존재하지 않는다"),
     SMS_VERIFICATION_REQUIRED(HttpStatus.FORBIDDEN, "전화번호 인증이 필요한 기능을 인증 전에 호출한다"),
 
@@ -53,7 +55,12 @@ public enum ErrorCode {
     CHAT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 채팅방의 participant가 아니다"),
 
     SMS_PROVIDER_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "SMS Provider가 설정되지 않는다"),
-    SMS_SEND_FAILED(HttpStatus.BAD_GATEWAY, "SMS Provider 전송에 실패한다");
+    SMS_SEND_FAILED(HttpStatus.BAD_GATEWAY, "SMS Provider 전송에 실패한다"),
+
+    EMERGENCY_CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "긴급 호출이 존재하지 않는다"),
+
+    CALIBRATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Calibration이 존재하지 않는다"),
+    CALIBRATION_INVALID_PAYLOAD(HttpStatus.BAD_REQUEST, "calibrationData 형식이 올바르지 않는다");
 
     private final HttpStatus status;
     private final String message;

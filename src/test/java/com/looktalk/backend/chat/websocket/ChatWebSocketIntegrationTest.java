@@ -14,6 +14,12 @@ import com.looktalk.backend.chat.repository.ChatRoomRepository;
 import com.looktalk.backend.e2ee.entity.UserE2eeKey;
 import com.looktalk.backend.e2ee.repository.UserE2eeKeyRepository;
 import com.looktalk.backend.global.security.JwtTokenProvider;
+import com.looktalk.backend.hospital.entity.Hospital;
+import com.looktalk.backend.hospital.repository.HospitalRepository;
+import com.looktalk.backend.staff.entity.Staff;
+import com.looktalk.backend.staff.entity.StaffPatientAssignment;
+import com.looktalk.backend.staff.repository.StaffPatientAssignmentRepository;
+import com.looktalk.backend.staff.repository.StaffRepository;
 import com.looktalk.backend.user.entity.User;
 import com.looktalk.backend.user.entity.UserRole;
 import com.looktalk.backend.user.repository.UserRepository;
@@ -25,6 +31,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -56,6 +63,10 @@ class ChatWebSocketIntegrationTest {
     private static final String USER_A = "wsit-a";
     private static final String USER_B = "wsit-b";
     private static final String USER_C_NOT_IN_ROOM = "wsit-c-outsider";
+    private static final String STAFF_WITH_ALIAS = "wsit-staff-aliased";
+    private static final String STAFF_WITHOUT_ALIAS = "wsit-staff-plain";
+    private static final String PATIENT_SENDER = "wsit-patient-sender";
+    private static final String ALIAS_FOR_SENDER = "B의별칭_환자";
 
     @LocalServerPort
     private int port;
@@ -75,10 +86,20 @@ class ChatWebSocketIntegrationTest {
     @Autowired
     private UserE2eeKeyRepository userE2eeKeyRepository;
 
+    @Autowired
+    private HospitalRepository hospitalRepository;
+
+    @Autowired
+    private StaffRepository staffRepository;
+
+    @Autowired
+    private StaffPatientAssignmentRepository assignmentRepository;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
 
     private Long hospitalRoomId;
+    private Long hospitalId;
 
     @BeforeEach
     void setUp() {
@@ -133,6 +154,16 @@ class ChatWebSocketIntegrationTest {
                 .ifPresent(room -> chatRoomRepository.deleteById(room.getRoomId()));
         userRepository.findById(USER_A).ifPresent(u -> userRepository.deleteById(USER_A));
         userRepository.findById(USER_B).ifPresent(u -> userRepository.deleteById(USER_B));
+
+        chatRoomRepository.findByConversationKey("WSIT-ALIAS:" + PATIENT_SENDER)
+                .ifPresent(room -> chatRoomRepository.deleteById(room.getRoomId()));
+        for (String userId : List.of(STAFF_WITH_ALIAS, STAFF_WITHOUT_ALIAS, PATIENT_SENDER)) {
+            userRepository.findById(userId).ifPresent(u -> userRepository.deleteById(userId));
+        }
+        if (hospitalId != null) {
+            hospitalRepository.findById(hospitalId).ifPresent(h -> hospitalRepository.deleteById(hospitalId));
+            hospitalId = null;
+        }
     }
 
     // ===== 1. 유효한 JWT: CONNECT -> /user/queue/chat SUBSCRIBE 후에도 세션이 유지되어야 한다 =====
@@ -224,6 +255,133 @@ class ChatWebSocketIntegrationTest {
                 "B는 자신의 ciphertext만 받아야 한다.");
         assertTrue(!cipherForA.equals(eventB.get("data").get("encryptedPayload").get("ciphertext").asText()),
                 "B가 A의 ciphertext를 받으면 안 된다.");
+    }
+
+    // ===== 4. Step 8B - 같은 message라도 MESSAGE_CREATED payload의 senderDisplayName은 recipient마다
+    // 달라야 한다(alias를 가진 STAFF, alias 없는 STAFF, sender 자기 자신). 다른 필드(messageId 등)는 동일해야 한다 =====
+
+    @Test
+    void messageCreatedEventShowsDifferentSenderDisplayNamePerRecipient() throws Exception {
+        Hospital hospital = hospitalRepository.save(Hospital.builder()
+                .hospitalName("WSIT Alias Hospital")
+                .inviteCode("WSIT-ALIAS-INVITE-" + System.nanoTime())
+                .createdAt(Instant.now())
+                .build());
+        hospitalId = hospital.getHospitalId();
+
+        User patientSender = userRepository.save(User.builder()
+                .userId(PATIENT_SENDER)
+                .userName("김환자")
+                .userEmail(PATIENT_SENDER + "@wsit.local")
+                .userPwd("unused-in-this-test")
+                .isEmailVerified(true)
+                .isSmsVerified(false)
+                .createdAt(Instant.now())
+                .loginId(PATIENT_SENDER + "-login")
+                .role(UserRole.PATIENT)
+                .build());
+        User staffWithAlias = userRepository.save(User.builder()
+                .userId(STAFF_WITH_ALIAS)
+                .userEmail(STAFF_WITH_ALIAS + "@wsit.local")
+                .userPwd("unused-in-this-test")
+                .isEmailVerified(true)
+                .isSmsVerified(false)
+                .createdAt(Instant.now())
+                .loginId(STAFF_WITH_ALIAS + "-login")
+                .role(UserRole.STAFF)
+                .build());
+        User staffWithoutAlias = userRepository.save(User.builder()
+                .userId(STAFF_WITHOUT_ALIAS)
+                .userEmail(STAFF_WITHOUT_ALIAS + "@wsit.local")
+                .userPwd("unused-in-this-test")
+                .isEmailVerified(true)
+                .isSmsVerified(false)
+                .createdAt(Instant.now())
+                .loginId(STAFF_WITHOUT_ALIAS + "-login")
+                .role(UserRole.STAFF)
+                .build());
+
+        Staff staffAliased = staffRepository.save(Staff.builder()
+                .user(staffWithAlias).hospital(hospital).createdAt(Instant.now()).build());
+        staffRepository.save(Staff.builder()
+                .user(staffWithoutAlias).hospital(hospital).createdAt(Instant.now()).build());
+        // STAFF_WITH_ALIAS만 PATIENT_SENDER의 담당 STAFF고 alias를 갖는다. STAFF_WITHOUT_ALIAS는 담당 관계가 없다.
+        assignmentRepository.save(StaffPatientAssignment.builder()
+                .staff(staffAliased).patientUser(patientSender).patientAlias(ALIAS_FOR_SENDER)
+                .assignedAt(Instant.now()).build());
+
+        // 3명(PATIENT_SENDER, STAFF_WITH_ALIAS, STAFF_WITHOUT_ALIAS)이 함께 있는 HOSPITAL room을 직접 구성한다.
+        ChatRoom room = chatRoomRepository.save(ChatRoom.builder()
+                .roomType(ChatRoomType.HOSPITAL)
+                .conversationKey("WSIT-ALIAS:" + PATIENT_SENDER)
+                .createdAt(Instant.now())
+                .build());
+        chatParticipantRepository.save(ChatParticipant.builder()
+                .room(room).user(patientSender).joinedAt(Instant.now()).withdrawn(false).build());
+        chatParticipantRepository.save(ChatParticipant.builder()
+                .room(room).user(staffWithAlias).joinedAt(Instant.now()).withdrawn(false).build());
+        chatParticipantRepository.save(ChatParticipant.builder()
+                .room(room).user(staffWithoutAlias).joinedAt(Instant.now()).withdrawn(false).build());
+
+        userE2eeKeyRepository.save(UserE2eeKey.builder()
+                .user(patientSender).keyVersion(1).publicKey("wsit-sender-public-key").createdAt(Instant.now()).build());
+        userE2eeKeyRepository.save(UserE2eeKey.builder()
+                .user(staffWithAlias).keyVersion(1).publicKey("wsit-staff-alias-public-key").createdAt(Instant.now()).build());
+        userE2eeKeyRepository.save(UserE2eeKey.builder()
+                .user(staffWithoutAlias).keyVersion(1).publicKey("wsit-staff-plain-public-key").createdAt(Instant.now()).build());
+
+        String tokenSender = jwtTokenProvider.generateAccessToken(PATIENT_SENDER, UserRole.PATIENT);
+        String tokenStaffAliased = jwtTokenProvider.generateAccessToken(STAFF_WITH_ALIAS, UserRole.STAFF);
+        String tokenStaffPlain = jwtTokenProvider.generateAccessToken(STAFF_WITHOUT_ALIAS, UserRole.STAFF);
+
+        BlockingQueue<JsonNode> queueSender = subscribeAndCollect(tokenSender);
+        BlockingQueue<JsonNode> queueStaffAliased = subscribeAndCollect(tokenStaffAliased);
+        BlockingQueue<JsonNode> queueStaffPlain = subscribeAndCollect(tokenStaffPlain);
+
+        String cipherForSender = Base64.getEncoder().encodeToString("cipher-for-sender".getBytes(StandardCharsets.UTF_8));
+        String cipherForAliased = Base64.getEncoder().encodeToString("cipher-for-staff-aliased".getBytes(StandardCharsets.UTF_8));
+        String cipherForPlain = Base64.getEncoder().encodeToString("cipher-for-staff-plain".getBytes(StandardCharsets.UTF_8));
+
+        String body = "{"
+                + "\"messageType\":\"TEXT\","
+                + "\"ciphertexts\":["
+                + "{\"recipientUserId\":\"" + PATIENT_SENDER + "\",\"keyVersion\":1,\"algorithm\":\"LIBSODIUM_SEALED_BOX\",\"ciphertext\":\"" + cipherForSender + "\"},"
+                + "{\"recipientUserId\":\"" + STAFF_WITH_ALIAS + "\",\"keyVersion\":1,\"algorithm\":\"LIBSODIUM_SEALED_BOX\",\"ciphertext\":\"" + cipherForAliased + "\"},"
+                + "{\"recipientUserId\":\"" + STAFF_WITHOUT_ALIAS + "\",\"keyVersion\":1,\"algorithm\":\"LIBSODIUM_SEALED_BOX\",\"ciphertext\":\"" + cipherForPlain + "\"}"
+                + "]}";
+
+        JsonNode response = post("/api/chat-rooms/" + room.getRoomId() + "/messages", tokenSender, body);
+        assertTrue(response.get("success").asBoolean(), "CHAT-006 HOSPITAL 전송은 성공해야 한다: " + response);
+        long messageId = response.get("data").get("messageId").asLong();
+
+        JsonNode eventSender = queueSender.poll(5, TimeUnit.SECONDS);
+        JsonNode eventStaffAliased = queueStaffAliased.poll(5, TimeUnit.SECONDS);
+        JsonNode eventStaffPlain = queueStaffPlain.poll(5, TimeUnit.SECONDS);
+
+        assertTrue(eventSender != null, "sender 본인도 자신의 이벤트를 받아야 한다.");
+        assertTrue(eventStaffAliased != null, "alias를 가진 STAFF recipient는 자신의 이벤트를 받아야 한다.");
+        assertTrue(eventStaffPlain != null, "alias가 없는 STAFF recipient도 자신의 이벤트를 받아야 한다.");
+
+        // 불변 필드(messageId/roomId)는 recipient와 무관하게 동일해야 한다.
+        assertEquals(messageId, eventSender.get("data").get("messageId").asLong());
+        assertEquals(messageId, eventStaffAliased.get("data").get("messageId").asLong());
+        assertEquals(messageId, eventStaffPlain.get("data").get("messageId").asLong());
+        assertEquals(room.getRoomId(), eventSender.get("roomId").asLong());
+        assertEquals(room.getRoomId(), eventStaffAliased.get("roomId").asLong());
+        assertEquals(room.getRoomId(), eventStaffPlain.get("roomId").asLong());
+
+        // senderDisplayName은 recipient마다 다르다 - 같은 event 객체를 재사용하면 안 된다.
+        assertEquals("김환자", eventSender.get("data").get("senderDisplayName").asText(),
+                "sender 본인 시점(자기 자신 view)에는 항상 전역 규칙만 보여야 한다.");
+        assertEquals(ALIAS_FOR_SENDER, eventStaffAliased.get("data").get("senderDisplayName").asText(),
+                "담당 STAFF recipient는 자신이 설정한 patientAlias를 봐야 한다.");
+        assertEquals("김환자", eventStaffPlain.get("data").get("senderDisplayName").asText(),
+                "담당 관계가 없는 STAFF recipient는 전역 규칙(userName)만 봐야 한다.");
+
+        // ciphertext는 여전히 recipient별로 격리되어야 한다(alias 적용이 E2EE에 영향을 주지 않는다).
+        assertEquals(cipherForSender, eventSender.get("data").get("encryptedPayload").get("ciphertext").asText());
+        assertEquals(cipherForAliased, eventStaffAliased.get("data").get("encryptedPayload").get("ciphertext").asText());
+        assertEquals(cipherForPlain, eventStaffPlain.get("data").get("encryptedPayload").get("ciphertext").asText());
     }
 
     // ===== helpers =====

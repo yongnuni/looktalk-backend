@@ -16,6 +16,7 @@ import com.looktalk.backend.chat.repository.ChatParticipantRepository;
 import com.looktalk.backend.chat.repository.ChatRoomRepository;
 import com.looktalk.backend.chat.repository.MessageCiphertextRepository;
 import com.looktalk.backend.chat.repository.MessageRepository;
+import com.looktalk.backend.chat.support.ChatDisplayNameResolver;
 import com.looktalk.backend.chat.websocket.ChatRealtimePublisher;
 import com.looktalk.backend.e2ee.dto.EncryptedPayload;
 import com.looktalk.backend.e2ee.entity.UserE2eeKey;
@@ -60,6 +61,7 @@ public class ChatMessageService {
     private final SealedBoxEncryptor sealedBoxEncryptor;
     private final SmsMessageSender smsMessageSender;
     private final ChatRealtimePublisher realtimePublisher;
+    private final ChatDisplayNameResolver chatDisplayNameResolver;
     private final TransactionTemplate transactionTemplate;
 
     public ChatMessageService(
@@ -73,6 +75,7 @@ public class ChatMessageService {
             SealedBoxEncryptor sealedBoxEncryptor,
             SmsMessageSender smsMessageSender,
             ChatRealtimePublisher realtimePublisher,
+            ChatDisplayNameResolver chatDisplayNameResolver,
             PlatformTransactionManager transactionManager
     ) {
         this.chatRoomRepository = chatRoomRepository;
@@ -85,6 +88,7 @@ public class ChatMessageService {
         this.sealedBoxEncryptor = sealedBoxEncryptor;
         this.smsMessageSender = smsMessageSender;
         this.realtimePublisher = realtimePublisher;
+        this.chatDisplayNameResolver = chatDisplayNameResolver;
 
         // CHAT-006 SMS는 Provider network 호출을 DB write Transaction 밖에서 수행해야 한다. sendMessage() 자체를
         // @Transactional로 두면 private 메서드 호출에도 걸려 Provider 호출까지 트랜잭션에 포함되므로,
@@ -106,6 +110,8 @@ public class ChatMessageService {
         if (!chatParticipantRepository.existsByRoom_RoomIdAndUser_UserId(roomId, currentUserId)) {
             throw new BusinessException(ErrorCode.CHAT_ACCESS_DENIED);
         }
+        User viewer = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 1단계 - 현재 사용자용 ciphertext가 존재하는 message만을 대상으로 messageId DESC cursor pagination.
         // size+1건을 가져와 COUNT 쿼리 없이 hasNext를 판단한다.
@@ -127,15 +133,25 @@ public class ChatMessageService {
                 .findAllByMessage_MessageIdInAndRecipientUser_UserId(pageIds, currentUserId).stream()
                 .collect(Collectors.toMap(c -> c.getMessage().getMessageId(), c -> c));
 
+        // Step 8B - viewer가 STAFF일 때만, 이 페이지에 등장하는 sender 중 PATIENT userId 후보 전체에 대해
+        // alias를 한 번에 배치 조회한다(message 수만큼 반복 조회하지 않기 위함).
+        Set<String> candidateSenderPatientUserIds = messageById.values().stream()
+                .map(m -> m.getSenderParticipant().getUser())
+                .filter(user -> user != null && user.getRole() == UserRole.PATIENT)
+                .map(User::getUserId)
+                .collect(Collectors.toSet());
+        Map<String, String> aliasByPatientUserId =
+                chatDisplayNameResolver.loadAliasesForStaffViewer(viewer, candidateSenderPatientUserIds);
+
         // 1단계가 정한 messageId DESC 순서를 그대로 유지해 최종 Response를 만든다(IN 절 결과는 순서 미보장).
         List<ChatMessageResponse> messages = pageIds.stream()
-                .map(id -> toResponse(messageById.get(id), ciphertextByMessageId.get(id)))
+                .map(id -> toResponse(messageById.get(id), ciphertextByMessageId.get(id), aliasByPatientUserId))
                 .toList();
 
         return new ChatMessageListResponse(messages, hasNext, nextCursor);
     }
 
-    private ChatMessageResponse toResponse(Message message, MessageCiphertext ciphertext) {
+    private ChatMessageResponse toResponse(Message message, MessageCiphertext ciphertext, Map<String, String> aliasByPatientUserId) {
         if (message == null || ciphertext == null) {
             // 1단계 EXISTS 조건이 이미 "현재 사용자용 ciphertext가 있는 message"만 골라냈으므로 도달하지 않아야
             // 한다. 다른 recipient의 ciphertext로 대체하거나 평문 fallback을 만드는 대신 즉시 예외로 드러낸다.
@@ -150,7 +166,8 @@ public class ChatMessageService {
         User senderUser = sender.getUser();
         if (senderUser != null) {
             senderUserId = senderUser.getUserId();
-            senderDisplayName = DisplayNameResolver.resolve(senderUser);
+            senderDisplayName = chatDisplayNameResolver.withAliasFallback(
+                    aliasByPatientUserId.get(senderUser.getUserId()), senderUser);
         } else if (sender.isWithdrawn()) {
             senderUserId = null;
             senderDisplayName = WITHDRAWN_USER_DISPLAY_NAME;
@@ -302,13 +319,26 @@ public class ChatMessageService {
         // 반드시 이 뒤에서만 수행한다(저장 callback 내부에서 publish하지 않는다 - 58. commit 이후에만 발행).
         // HOSPITAL은 활성 내부 participant 각각에게 그 사용자용 ciphertext만 담은 별도 Event를 보낸다
         // (sender 본인도 포함).
-        String senderDisplayName = DisplayNameResolver.resolve(userByUserId.get(currentUserId));
+        //
+        // Step 8B - senderDisplayName은 recipient마다 다를 수 있다(STAFF recipient는 자신의 patientAlias를,
+        // PATIENT recipient/자기 자신은 항상 전역 userName -> loginId를 본다). 루프 밖에서 한 번만 계산해
+        // 모든 recipient에게 재사용하면 안 되므로, sender가 PATIENT인 경우에 한해 STAFF recipient들의 alias를
+        // 배치 조회(recipient 수만큼 반복 쿼리하지 않기 위함)한 뒤 recipient별로 개별 계산한다.
+        User sender = userByUserId.get(currentUserId);
+        List<String> staffRecipientUserIds = activeUserIds.stream()
+                .filter(userId -> userByUserId.get(userId).getRole() == UserRole.STAFF)
+                .toList();
+        Map<String, String> aliasByStaffUserId =
+                chatDisplayNameResolver.loadAliasesForPatientSender(sender, staffRecipientUserIds);
+
         for (ChatMessageCiphertextRequest item : ciphertexts) {
+            String recipientDisplayName = chatDisplayNameResolver.withAliasFallback(
+                    aliasByStaffUserId.get(item.recipientUserId()), sender);
             ChatMessageCreatedEventData eventData = new ChatMessageCreatedEventData(
                     saved.getMessageId(),
                     myParticipant.getParticipantId(),
                     currentUserId,
-                    senderDisplayName,
+                    recipientDisplayName,
                     new EncryptedPayload(item.algorithm(), item.keyVersion(), item.ciphertext()),
                     saved.getCreatedAt()
             );

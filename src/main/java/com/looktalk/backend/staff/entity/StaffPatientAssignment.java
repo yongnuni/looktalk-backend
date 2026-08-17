@@ -44,4 +44,10 @@ public class StaffPatientAssignment {
 
     @Column(name = "assigned_at", nullable = false)
     private Instant assignedAt;
+
+    // docs/LookTalk_Backend_Phase2_Implementation_Plan_Updated.md 10.4 - 특정 STAFF가 자기 담당 PATIENT를
+    // 자신의 화면에서만 보기 위한 개인 별칭. users.user_name을 덮어쓰지 않으며, 이 assignment의 소유자인
+    // STAFF에게만 노출한다.
+    @Column(name = "patient_alias", length = 50)
+    private String patientAlias;
 }

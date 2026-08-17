@@ -4,6 +4,7 @@ import com.looktalk.backend.global.security.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -24,8 +25,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
-    // docs/LookTalk_Backend_API_Spec_v2.1.md 58. 이번 단계에서 client가 구독할 수 있는 destination은 이것 하나뿐이다.
-    private static final String ALLOWED_SUBSCRIBE_DESTINATION = "/user/queue/chat";
+    // docs/LookTalk_Backend_API_Spec_v2.1.md 58. + docs/LookTalk_Backend_Phase2_Implementation_Plan.md 7.
+    // client가 구독할 수 있는 destination은 이 두 개뿐이다.
+    private static final Set<String> ALLOWED_SUBSCRIBE_DESTINATIONS = Set.of("/user/queue/chat", "/user/queue/emergency");
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String ROLE_CLAIM = "role";
 
@@ -82,7 +84,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor.getUser() == null) {
             throw new MessagingException("인증되지 않은 세션은 구독할 수 없다.");
         }
-        if (!ALLOWED_SUBSCRIBE_DESTINATION.equals(accessor.getDestination())) {
+        if (!ALLOWED_SUBSCRIBE_DESTINATIONS.contains(accessor.getDestination())) {
             throw new MessagingException("허용되지 않은 구독 destination이다.");
         }
     }

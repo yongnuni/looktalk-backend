@@ -67,7 +67,9 @@ public class AuthController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200", description = "인증번호 발송 요청 처리 완료"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "AUTH_DUPLICATE_EMAIL - purpose=SIGNUP인데 이미 가입된 이메일")
+                    responseCode = "409", description = "AUTH_DUPLICATE_EMAIL - purpose=SIGNUP인데 이미 가입된 이메일"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "502", description = "EMAIL_SEND_FAILED - 이메일 발송 실패")
     })
     @PostMapping("/email-verifications")
     public ResponseEntity<ApiResponse<EmailVerificationResponse>> sendEmailVerification(

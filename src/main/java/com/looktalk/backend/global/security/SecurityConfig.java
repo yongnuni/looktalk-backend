@@ -54,6 +54,8 @@ public class SecurityConfig {
                                 "/api/users/me/phone-verifications/confirm"
                         ).hasRole("PATIENT")
                         .requestMatchers("/api/users/me/settings").hasRole("PATIENT")
+                        // docs/LookTalk_Backend_Phase2_Implementation_Plan_Updated.md 19. Security 권한
+                        .requestMatchers("/api/calibrations/**").hasRole("PATIENT")
                         .requestMatchers("/api/memos/**").hasRole("PATIENT")
                         .requestMatchers("/api/phrases/**").hasRole("PATIENT")
                         .requestMatchers("/api/friends/**").hasRole("PATIENT")
@@ -61,6 +63,10 @@ public class SecurityConfig {
                         // CHAT-001~003(/api/chat-contacts, /api/chat-rooms, /api/chat-rooms/hospital)은
                         // PATIENT/STAFF 모두 가능(AUTH)하므로 별도 매처 없이 아래 anyRequest().authenticated()로 처리한다.
                         .requestMatchers(HttpMethod.POST, "/api/chat-rooms/sms").hasRole("PATIENT")
+                        // docs/LookTalk_Backend_Phase2_Implementation_Plan.md 19. Security 권한
+                        .requestMatchers(HttpMethod.POST, "/api/emergency-calls").hasRole("PATIENT")
+                        .requestMatchers(HttpMethod.GET, "/api/emergency-calls").hasRole("STAFF")
+                        .requestMatchers(HttpMethod.PATCH, "/api/emergency-calls/**").hasRole("STAFF")
                         .requestMatchers("/api/staff/**").hasRole("STAFF")
                         .anyRequest().authenticated()
                 )

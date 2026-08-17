@@ -4,6 +4,7 @@ import com.looktalk.backend.global.response.ApiResponse;
 import com.looktalk.backend.global.swagger.OpenApiConfig;
 import com.looktalk.backend.staff.dto.StaffMeResponse;
 import com.looktalk.backend.staff.dto.StaffPatientAddRequest;
+import com.looktalk.backend.staff.dto.StaffPatientAliasUpdateRequest;
 import com.looktalk.backend.staff.dto.StaffPatientResponse;
 import com.looktalk.backend.staff.service.StaffService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -101,5 +103,30 @@ public class StaffController {
         staffService.removePatient(principal.getName(), patientUserId);
 
         return ApiResponse.success("담당 관계가 해제되었습니다.", null);
+    }
+
+    @Operation(
+            summary = "담당 환자 별칭 수정 (STAFF-005)",
+            description = "현재 STAFF 자신의 assignment에만 개인 별칭을 설정한다. alias가 null이거나 공백뿐이면 "
+                    + "별칭을 삭제(NULL)한다. 다른 STAFF/PATIENT에게는 이 별칭이 노출되지 않는다."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "별칭 수정 완료"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "COMMON_FORBIDDEN - STAFF가 아닌 사용자의 호출"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "STAFF_PATIENT_NOT_ASSIGNED - 담당 관계가 존재하지 않음")
+    })
+    @PatchMapping("/patients/{patientUserId}/alias")
+    public ApiResponse<StaffPatientResponse> updatePatientAlias(
+            Principal principal,
+            @Parameter(description = "별칭을 수정할 환자의 내부 사용자 ID", example = "P001")
+            @PathVariable String patientUserId,
+            @Valid @RequestBody StaffPatientAliasUpdateRequest request
+    ) {
+        return ApiResponse.success(
+                "담당 환자 별칭이 수정되었습니다.",
+                staffService.updatePatientAlias(principal.getName(), patientUserId, request)
+        );
     }
 }

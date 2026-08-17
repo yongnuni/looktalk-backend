@@ -20,6 +20,7 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
@@ -37,6 +38,7 @@ dependencies {
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-mail-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
@@ -48,4 +50,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// application.yml이 더 이상 spring.profiles.active를 강제하지 않으므로(배포 환경 fail-fast를 위해),
+	// ./gradlew test는 local profile(application-local.yml: datasource, mail provider 기본값)을 명시적으로
+	// 지정해 기존과 동일하게 동작하도록 한다. 이 값은 test task 전용이며 실제 배포 아티팩트에는 포함되지 않는다.
+	environment 'SPRING_PROFILES_ACTIVE', 'local'
 }
