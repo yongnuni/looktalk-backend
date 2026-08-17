@@ -1,10 +1,16 @@
 spring:
+  # =========================
+  # PostgreSQL Database 설정
+  # =========================
   datasource:
     url: jdbc:postgresql://127.0.0.1:5433/looktalk
     username: looktalk
     password: looktalk
     driver-class-name: org.postgresql.Driver
 
+  # =========================
+  # JPA 설정
+  # =========================
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,13 +20,49 @@ spring:
     show-sql: true
     open-in-view: false
 
+  # =========================
+  # Flyway 설정
+  # =========================
   flyway:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-looktalk:
+  # =========================
+  # Gmail SMTP - LOCAL 기본 설정
+  # =========================
+  # 실제 계정/비밀번호는 환경변수로만 주입한다.
   mail:
-    # local/test 전용 기본값. MAIL_PROVIDER를 설정하지 않으면 LoggingEmailSender를 사용한다.
-    # 배포 환경은 application.yml(base)에만 있는 무기본값 설정을 통해 MAIL_PROVIDER를 명시하도록 강제한다.
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_STARTTLS_ENABLE:true}
+
+
+looktalk:
+
+  # =========================
+  # JWT - LOCAL 전용
+  # =========================
+  jwt:
+    secret: ${JWT_SECRET:looktalk-local-jwt-secret-key-2026-development}
+
+  # =========================
+  # OTP - LOCAL 전용
+  # =========================
+  otp:
+    secret: ${OTP_HMAC_SECRET:looktalk-local-otp-hmac-secret-key-2026-development}
+
+  # =========================
+  # Mail Provider - LOCAL 전용
+  # =========================
+  # 기본은 실제 메일을 보내지 않는 logging.
+  # 실제 이메일 테스트 시 MAIL_PROVIDER=smtp 설정.
+  mail:
     provider: ${MAIL_PROVIDER:logging}
