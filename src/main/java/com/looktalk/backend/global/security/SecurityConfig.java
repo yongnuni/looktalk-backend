@@ -45,7 +45,14 @@ public class SecurityConfig {
                                 // permit한다. 이것이 "WebSocket이 인증 없이 사용 가능하다"는 뜻은 아니다: 실질적인
                                 // 인증 경계는 WebSocketAuthChannelInterceptor의 STOMP CONNECT 검증이며, JWT가 없거나
                                 // 유효하지 않은 세션은 CONNECTED를 받지 못해 메시징을 전혀 사용할 수 없다.
-                                "/ws"
+                                "/ws",
+                                // SOLAPI SINGLE-REPORT webhook. JWT로 인증하지 않는 외부 provider callback이므로
+                                // permitAll이지만, 실제 인증은 Controller가 X-Solapi-Secret으로 수행한다
+                                // (SolapiReportWebhookController.requireValidSecret).
+                                "/api/integrations/sms/reports/solapi",
+                                // U+ MO inbound webhook. 마찬가지로 JWT 인증 대상이 아니며, URL 경로의 고엔트로피
+                                // token(UplusMoInboundController.requireValidToken)이 실질적인 인증 경계다.
+                                "/api/integrations/sms/inbound/uplus/*"
                         ).permitAll()
                         // docs/LookTalk_Backend_API_Spec_v2.1.md 10. 권한 구분 - PATIENT/STAFF 전용 API
                         .requestMatchers(

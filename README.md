@@ -92,6 +92,9 @@ Windows PowerShell 기준:
 Started LooktalkBackendApplication
 ```
 
+실제 SOLAPI/U+ SMS를 로컬에서 휴대폰과 양방향으로 테스트하려면
+[docs/LookTalk_Backend_Sms_Local_Demo.md](docs/LookTalk_Backend_Sms_Local_Demo.md)를 참고하세요.
+
 ---
 
 ## Local URLs

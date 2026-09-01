@@ -4,6 +4,7 @@ import com.looktalk.backend.auth.entity.VerificationPurpose;
 import com.looktalk.backend.auth.entity.VerificationTargetType;
 import com.looktalk.backend.auth.service.VerificationCodeService;
 import com.looktalk.backend.chat.repository.ChatParticipantRepository;
+import com.looktalk.backend.chat.service.SmsSendFailedException;
 import com.looktalk.backend.global.exception.BusinessException;
 import com.looktalk.backend.global.exception.ErrorCode;
 import com.looktalk.backend.user.dto.PhoneVerificationResponse;
@@ -20,11 +21,15 @@ import com.looktalk.backend.user.repository.UserSettingRepository;
 import com.looktalk.backend.user.support.DisplayNameResolver;
 import com.looktalk.backend.user.support.PhoneNormalizer;
 import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     private final UserRepository userRepository;
     private final UserSettingRepository userSettingRepository;
@@ -83,8 +88,13 @@ public class UserService {
         return trimmed.isBlank() ? null : trimmed;
     }
 
-    // USER-003
-    @Transactional
+    // USER-003 - 의도적으로 method 레벨 @Transactional을 두지 않는다. smsSender.sendVerificationCode()는
+    // SOLAPI 실연동에서 외부 HTTP 호출이 되므로, DB transaction을 오래 열어둔 채 그 응답을 기다리면 안 된다
+    // (ChatMessageService.sendSmsMessage()와 동일한 이유). findUser()/verificationCodeService.issue()는
+    // 각자 자기 자신의 transaction(JpaRepository/서비스 레벨 @Transactional)으로 독립 커밋되므로, 발송이
+    // 실패해도 이미 저장된 VerificationCode 행이 롤백되지는 않는다 - 사용자가 받지 못한 인증번호는 어차피
+    // 코드값을 몰라 confirm할 수 없으므로 무해한 잔여 row이며, 다음 재요청은 최신 행(codeHash) 기준으로
+    // 정상 동작한다(VerificationCodeService.confirm의 findLatest).
     public PhoneVerificationResponse sendPhoneVerification(String userId, String rawPhone) {
         User user = findUser(userId);
         requirePatient(user);
@@ -93,7 +103,15 @@ public class UserService {
         VerificationCodeService.IssuedCode issued = verificationCodeService.issue(
                 VerificationTargetType.SMS, normalizedPhone, VerificationPurpose.PHONE_VERIFY);
 
-        smsSender.sendVerificationCode(normalizedPhone, issued.code());
+        try {
+            smsSender.sendVerificationCode(normalizedPhone, issued.code());
+        } catch (SmsSendFailedException exception) {
+            // BusinessException(ErrorCode)는 cause를 보존하지 않으므로, 여기서 원인 체인(SolapiApiException ->
+            // RestClientResponseException 등)이 유실되기 전에 로그로 남긴다. 전화번호/OTP code는 이 exception
+            // message/cause 어디에도 포함되지 않는다(SolapiClient/SolapiSmsSender가 담지 않음).
+            log.warn("전화번호 인증 SMS 발송에 실패했습니다: {}", exception.getMessage(), exception);
+            throw new BusinessException(ErrorCode.SMS_SEND_FAILED);
+        }
 
         return new PhoneVerificationResponse(issued.expiresInSeconds());
     }

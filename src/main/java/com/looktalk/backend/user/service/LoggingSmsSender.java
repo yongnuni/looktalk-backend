@@ -2,11 +2,14 @@ package com.looktalk.backend.user.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-// 실제 SMS Provider가 아직 선정되지 않아 발송 사실만 기록하는 임시 구현체.
+// looktalk.sms.outbound-provider(SMS_OUTBOUND_PROVIDER)=UNCONFIGURED(기본값)일 때만 활성화되는 local/test용
+// 구현체. 실제 발송 대신 발송 사실만 기록한다.
 // docs/LookTalk_Backend_API_Spec_v2.1.md 5.4, 68. - 전화번호와 인증번호 원문은 로그에 남기지 않는다.
 @Component
+@ConditionalOnProperty(prefix = "looktalk.sms", name = "outbound-provider", havingValue = "UNCONFIGURED")
 public class LoggingSmsSender implements SmsSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingSmsSender.class);

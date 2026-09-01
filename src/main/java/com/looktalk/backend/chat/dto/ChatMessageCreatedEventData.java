@@ -14,7 +14,9 @@ public record ChatMessageCreatedEventData(
         @Schema(description = "보낸 participant ID", example = "5")
         Long senderParticipantId,
 
-        @Schema(description = "보낸 회원 ID (CHAT-006 sender는 항상 현재 인증된 내부 사용자다)", example = "U100")
+        @Schema(description = "보낸 회원 ID. CHAT-006(outbound) sender는 항상 현재 인증된 내부 사용자라 non-null이다. "
+                + "U+ MO inbound로 생성된 이벤트(외부 SMS 친구가 보낸 메시지)는 회원이 아니므로 null이다 - 이 경우"
+                + " senderParticipantId/senderDisplayName으로 발신자를 표시한다.", example = "U100", nullable = true)
         String senderUserId,
 
         @Schema(description = "보낸 사람 표시 이름", example = "김철수")

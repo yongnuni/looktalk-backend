@@ -56,6 +56,10 @@ public enum ErrorCode {
 
     SMS_PROVIDER_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "SMS Provider가 설정되지 않는다"),
     SMS_SEND_FAILED(HttpStatus.BAD_GATEWAY, "SMS Provider 전송에 실패한다"),
+    SMS_REPLY_NUMBER_NOT_ASSIGNED(HttpStatus.CONFLICT, "현재 환자에게 배정된 SMS 회신 번호가 없다"),
+
+    SMS_INBOUND_NUMBER_ALREADY_ASSIGNED(HttpStatus.CONFLICT, "해당 서비스 번호가 이미 다른 환자에게 배정되어 있다"),
+    SMS_INBOUND_NUMBER_NOT_ASSIGNED(HttpStatus.NOT_FOUND, "해당 환자에게 배정된 SMS 회신 번호가 없다"),
 
     EMERGENCY_CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "긴급 호출이 존재하지 않는다"),
 

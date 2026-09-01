@@ -18,6 +18,11 @@ public record ChatSendMessageRequest(
 
         @Schema(description = "SMS room 전용 평문 메시지(HOSPITAL room에서는 사용하지 않는다).",
                 example = "오늘 저녁에 전화해주세요", nullable = true)
-        String content
+        String content,
+
+        @Schema(description = "클라이언트가 생성하는 요청 idempotency key(선택, 예: UUID). 동일 room에 동일 값으로 "
+                + "재요청하면 SMS를 다시 발송하지 않고 기존 결과를 그대로 반환한다. 생략하면(구버전 클라이언트) "
+                + "중복 발송 방지를 보장하지 않는다.", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", nullable = true)
+        String clientMessageId
 ) {
 }

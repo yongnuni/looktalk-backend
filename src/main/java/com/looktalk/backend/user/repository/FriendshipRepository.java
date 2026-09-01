@@ -18,4 +18,9 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
 
     // FRIEND-003 - 전화번호 변경 시 자기 자신의 현재 friendship은 중복 검사에서 제외한다.
     boolean existsByUser_UserIdAndFriendPhoneAndFriendshipIdNot(String userId, String friendPhone, Long friendshipId);
+
+    // U+ MO inbound - moCallback(발신 전화번호)이 해당 환자의 등록된 친구인지 확인하고, 맞다면 SMS room
+    // find-or-create에 필요한 friendshipId를 얻는다. 전화번호 하나만으로 전체 사용자를 조회하지 않고 반드시
+    // 이미 확정된 patientUserId 스코프 안에서만 조회한다.
+    Optional<Friendship> findByUser_UserIdAndFriendPhone(String userId, String friendPhone);
 }

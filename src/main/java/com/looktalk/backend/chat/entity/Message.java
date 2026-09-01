@@ -44,6 +44,10 @@ public class Message {
     @Column(name = "message_type", length = 20)
     private String messageType;
 
+    // V10 - client-generated idempotency key(선택). HOSPITAL/SMS 공용이며 SMS 전용 필드가 아니다.
+    @Column(name = "client_message_id", length = 100)
+    private String clientMessageId;
+
     @Column(name = "created_at")
     private Instant createdAt;
 }

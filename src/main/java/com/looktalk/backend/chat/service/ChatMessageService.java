@@ -25,6 +25,13 @@ import com.looktalk.backend.e2ee.service.EncryptedPayloadValidator;
 import com.looktalk.backend.e2ee.service.SealedBoxEncryptor;
 import com.looktalk.backend.global.exception.BusinessException;
 import com.looktalk.backend.global.exception.ErrorCode;
+import com.looktalk.backend.sms.entity.SmsDeliveryStatus;
+import com.looktalk.backend.sms.entity.SmsInboundNumberAssignment;
+import com.looktalk.backend.sms.entity.SmsMessageDelivery;
+import com.looktalk.backend.sms.entity.SmsProvider;
+import com.looktalk.backend.sms.repository.SmsInboundNumberAssignmentRepository;
+import com.looktalk.backend.sms.repository.SmsMessageDeliveryRepository;
+import com.looktalk.backend.sms.service.SmsDeliveryService;
 import com.looktalk.backend.user.entity.User;
 import com.looktalk.backend.user.entity.UserRole;
 import com.looktalk.backend.user.repository.UserRepository;
@@ -33,8 +40,10 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -62,7 +71,12 @@ public class ChatMessageService {
     private final SmsMessageSender smsMessageSender;
     private final ChatRealtimePublisher realtimePublisher;
     private final ChatDisplayNameResolver chatDisplayNameResolver;
+    private final SmsInboundNumberAssignmentRepository smsInboundNumberAssignmentRepository;
+    private final SmsMessageDeliveryRepository smsMessageDeliveryRepository;
+    private final SmsDeliveryService smsDeliveryService;
     private final TransactionTemplate transactionTemplate;
+    private final boolean chatSenderFallbackEnabled;
+    private final String chatSenderFallbackNumber;
 
     public ChatMessageService(
             ChatRoomRepository chatRoomRepository,
@@ -76,7 +90,12 @@ public class ChatMessageService {
             SmsMessageSender smsMessageSender,
             ChatRealtimePublisher realtimePublisher,
             ChatDisplayNameResolver chatDisplayNameResolver,
-            PlatformTransactionManager transactionManager
+            SmsInboundNumberAssignmentRepository smsInboundNumberAssignmentRepository,
+            SmsMessageDeliveryRepository smsMessageDeliveryRepository,
+            SmsDeliveryService smsDeliveryService,
+            PlatformTransactionManager transactionManager,
+            @Value("${looktalk.sms.chat-sender-fallback.enabled:false}") boolean chatSenderFallbackEnabled,
+            @Value("${looktalk.sms.solapi.chat-sender-number:}") String chatSenderFallbackNumber
     ) {
         this.chatRoomRepository = chatRoomRepository;
         this.chatParticipantRepository = chatParticipantRepository;
@@ -89,6 +108,11 @@ public class ChatMessageService {
         this.smsMessageSender = smsMessageSender;
         this.realtimePublisher = realtimePublisher;
         this.chatDisplayNameResolver = chatDisplayNameResolver;
+        this.smsInboundNumberAssignmentRepository = smsInboundNumberAssignmentRepository;
+        this.smsMessageDeliveryRepository = smsMessageDeliveryRepository;
+        this.smsDeliveryService = smsDeliveryService;
+        this.chatSenderFallbackEnabled = chatSenderFallbackEnabled;
+        this.chatSenderFallbackNumber = chatSenderFallbackNumber;
 
         // CHAT-006 SMS는 Provider network 호출을 DB write Transaction 밖에서 수행해야 한다. sendMessage() 자체를
         // @Transactional로 두면 private 메서드 호출에도 걸려 Provider 호출까지 트랜잭션에 포함되므로,
@@ -349,8 +373,10 @@ public class ChatMessageService {
         return new ChatMessageSendResponse(saved.getMessageId(), saved.getCreatedAt());
     }
 
-    // 57.2 SMS - Provider network 호출은 DB write Transaction 밖에서 수행한다. Provider가 발송을 수락한
-    // 경우에만 현재 사용자의 "현재 active" 공개키로 content를 Backend가 sealed box 암호화해 저장한다.
+    // 57.2 SMS - "발송했는데 DB에 기록이 없는" 상태를 피하기 위해 Message/MessageCiphertext/SmsMessageDelivery
+    // (PENDING)를 먼저 durable하게 저장(commit)한 뒤에 Provider를 호출한다(DB write transaction 밖). 성공하면
+    // SENT+providerMessageId로, 실패하면 FAILED로 갱신한다 - Provider가 실패해도 message 자체(회신 이력)는
+    // 남지만, REST 호출자에게는 여전히 SMS_SEND_FAILED(502)를 반환해 실패를 알린다.
     private ChatMessageSendResponse sendSmsMessage(
             String currentUserId,
             ChatRoom room,
@@ -363,6 +389,18 @@ public class ChatMessageService {
         }
         if (request.content() == null || request.content().isBlank()) {
             throw new BusinessException(ErrorCode.COMMON_VALIDATION_ERROR);
+        }
+
+        // client idempotency key 재사용 검사(§14) - 동일 room+sender+key로 재요청이 오면 Provider를 다시
+        // 호출하지 않고 기존 결과를 그대로 반환한다. key가 없는(구버전) 요청은 이 보호를 받지 않는다.
+        String clientMessageId = blankToNull(request.clientMessageId());
+        if (clientMessageId != null) {
+            Optional<Message> existing = messageRepository
+                    .findByRoom_RoomIdAndSenderParticipant_ParticipantIdAndClientMessageId(
+                            room.getRoomId(), myParticipant.getParticipantId(), clientMessageId);
+            if (existing.isPresent()) {
+                return new ChatMessageSendResponse(existing.get().getMessageId(), existing.get().getCreatedAt());
+            }
         }
 
         User currentUser = userRepository.findById(currentUserId)
@@ -380,27 +418,28 @@ public class ChatMessageService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "room " + room.getRoomId() + "은 SMS room인데 외부 participant가 없습니다."));
-        String phone = externalParticipant.getExternalPhone();
+        String toPhone = externalParticipant.getExternalPhone();
 
         if (!smsMessageSender.isConfigured()) {
             throw new BusinessException(ErrorCode.SMS_PROVIDER_NOT_CONFIGURED);
         }
-        try {
-            smsMessageSender.send(phone, request.content());
-        } catch (SmsSendFailedException exception) {
-            throw new BusinessException(ErrorCode.SMS_SEND_FAILED);
-        }
 
-        // Provider 수락 이후에만 평문을 Backend가 암호화한다. 이 시점 이전에는 어떤 write transaction도 열려 있지
-        // 않으므로 Provider 호출이 DB write transaction을 붙잡지 않는다.
+        String fromPhone = resolveFromPhone(currentUserId);
+
+        // 암호화는 순수 로컬 연산이라 DB transaction 여부와 무관하다 - 미리 계산해 아래 저장을 한 번의
+        // transaction으로 끝낸다.
         String ciphertext = sealedBoxEncryptor.encrypt(request.content(), activeKey.getPublicKey());
+        Instant now = Instant.now();
 
-        Message saved = transactionTemplate.execute(status -> {
+        // 1단계 - durable 저장 + commit. 이 시점 이후로는 Provider 호출 결과와 무관하게 "시도했다"는 기록이
+        // 항상 남는다.
+        SmsSaveResult saved = transactionTemplate.execute(status -> {
             Message message = Message.builder()
                     .room(room)
                     .senderParticipant(myParticipant)
                     .messageType(request.messageType())
-                    .createdAt(Instant.now())
+                    .clientMessageId(clientMessageId)
+                    .createdAt(now)
                     .build();
             messageRepository.save(message);
 
@@ -412,23 +451,74 @@ public class ChatMessageService {
                     .ciphertext(ciphertext)
                     .build());
 
-            return message;
+            SmsMessageDelivery delivery = SmsMessageDelivery.builder()
+                    .message(message)
+                    .provider(SmsProvider.SOLAPI)
+                    .deliveryStatus(SmsDeliveryStatus.PENDING)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+            smsMessageDeliveryRepository.save(delivery);
+
+            return new SmsSaveResult(message, delivery);
         });
+
+        // 2단계 - Provider 호출은 DB write transaction 밖에서 수행한다(SOLAPI HTTP 응답을 기다리는 동안 DB
+        // connection을 붙잡지 않는다).
+        try {
+            SmsSendResult result = smsMessageSender.send(new SmsOutboundMessage(fromPhone, toPhone, request.content()));
+            smsDeliveryService.markSent(saved.delivery().getSmsDeliveryId(), result.providerMessageId());
+        } catch (SmsSendFailedException exception) {
+            smsDeliveryService.markFailed(saved.delivery().getSmsDeliveryId(), null, truncateStatusMessage(exception.getMessage()));
+            throw new BusinessException(ErrorCode.SMS_SEND_FAILED);
+        }
 
         // commit 완료 이후에만 publish한다(58). SMS recipient는 현재 PATIENT 한 명뿐이다 - 외부 SMS 상대는
         // Look Talk 사용자가 아니므로 WebSocket 수신자가 아니다.
         ChatMessageCreatedEventData eventData = new ChatMessageCreatedEventData(
-                saved.getMessageId(),
+                saved.message().getMessageId(),
                 myParticipant.getParticipantId(),
                 currentUserId,
                 DisplayNameResolver.resolve(currentUser),
                 new EncryptedPayload(EncryptedPayloadValidator.LIBSODIUM_SEALED_BOX, activeKey.getKeyVersion(), ciphertext),
-                saved.getCreatedAt()
+                saved.message().getCreatedAt()
         );
         realtimePublisher.publishMessageCreated(
                 currentUserId, ChatWebSocketEvent.messageCreated(room.getRoomId(), eventData));
 
-        return new ChatMessageSendResponse(saved.getMessageId(), saved.getCreatedAt());
+        return new ChatMessageSendResponse(saved.message().getMessageId(), saved.message().getCreatedAt());
+    }
+
+    // 발신번호는 원칙적으로 OTP처럼 고정값이 아니라 "현재 환자에게 배정된 SMS 회신 번호"다 - 이래야 친구가
+    // 답장했을 때 같은 번호(U+ MO)로 되돌아온다(production 정책, 변경하지 않는다). 다만 U+ MO 번호 배정 없이도
+    // 단방향 발송만 시연해야 하는 로컬/데모 환경을 위해, assignment가 없을 때만 명시적으로 활성화된 fallback
+    // 발신번호(SOLAPI에 실제 등록된 번호)를 대신 쓸 수 있게 한다. fallback은 looktalk.sms.chat-sender-
+    // fallback.enabled(SMS_CHAT_SENDER_FALLBACK_ENABLED)가 true일 때만 동작하며, assignment가 있으면 항상
+    // assignment가 우선한다 - 두 조건이 모두 없으면 기존과 동일하게 SMS_REPLY_NUMBER_NOT_ASSIGNED로 실패한다.
+    private String resolveFromPhone(String currentUserId) {
+        Optional<SmsInboundNumberAssignment> assignment =
+                smsInboundNumberAssignmentRepository.findByUser_UserIdAndActiveTrue(currentUserId);
+        if (assignment.isPresent()) {
+            return assignment.get().getServiceNumber();
+        }
+        if (chatSenderFallbackEnabled && chatSenderFallbackNumber != null && !chatSenderFallbackNumber.isBlank()) {
+            return chatSenderFallbackNumber;
+        }
+        throw new BusinessException(ErrorCode.SMS_REPLY_NUMBER_NOT_ASSIGNED);
+    }
+
+    private String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value;
+    }
+
+    private String truncateStatusMessage(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() > 200 ? value.substring(0, 200) : value;
+    }
+
+    private record SmsSaveResult(Message message, SmsMessageDelivery delivery) {
     }
 
     // docs/LookTalk_Backend_API_Spec_v2.1.md 55, 57.2 - SMS는 PATIENT 전용이다.

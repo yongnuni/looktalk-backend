@@ -34,6 +34,31 @@ looktalk:
     # 배포 환경에서는 CORS_ALLOWED_ORIGINS 환경변수(콤마로 여러 origin 구분 가능)로 재정의한다.
     # local 기본값은 Frontend(Vite) 개발 서버 origin이다.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  sms:
+    # 여기서는 기본값을 두지 않는다(mail.provider와 동일한 fail-fast 원칙). local profile은
+    # application-local.yml이 UNCONFIGURED로 덮어쓴다. 그 외 profile은 SMS_OUTBOUND_PROVIDER를 명시적으로
+    # 설정하지 않으면 기동 자체가 실패한다.
+    outbound-provider: ${SMS_OUTBOUND_PROVIDER}
+    solapi:
+      api-key: ${SOLAPI_API_KEY:}
+      api-secret: ${SOLAPI_API_SECRET:}
+      otp-sender-number: ${SOLAPI_OTP_SENDER_NUMBER:}
+      # 친구채팅(CHAT-006) SMS 전용 발신번호. otp-sender-number와 의미가 다르므로(인증문자 vs 친구채팅)
+      # 별도 값으로 둔다 - chat-sender-fallback.enabled가 true이고 환자에게 sms_inbound_number_assignment가
+      # 없을 때만 사용되는 로컬/데모 fallback이다(정상 production 경로는 여전히 assignment를 요구한다).
+      chat-sender-number: ${SOLAPI_CHAT_SENDER_NUMBER:}
+      report-webhook-secret: ${SOLAPI_WEBHOOK_SECRET:}
+    chat-sender-fallback:
+      # true면 ChatMessageService.sendSmsMessage()가 환자에게 U+ MO 번호 배정(sms_inbound_number_assignment)이
+      # 없을 때 solapi.chat-sender-number를 발신번호로 대신 사용한다. assignment가 있으면 이 값과 무관하게
+      # 항상 assignment가 우선한다. 기본값 false - 명시적으로 켜지 않으면 기존 production 정책 그대로다.
+      enabled: ${SMS_CHAT_SENDER_FALLBACK_ENABLED:false}
+    uplus:
+      webhook-token: ${UPLUS_WEBHOOK_TOKEN:}
+    inbound:
+      # 현재 U+ MO만 지원한다(SmsInboundMessageService). 이 값 자체는 문서화/향후 provider 교체 대비 목적이며,
+      # 런타임에서 Bean 선택을 좌우하지는 않는다(inbound 구현체가 하나뿐이므로 Strategy 전환이 아직 필요 없다).
+      provider: ${SMS_INBOUND_PROVIDER:UNCONFIGURED}
   mail:
     # 여기서는 기본값을 두지 않는다(JWT_SECRET/OTP_HMAC_SECRET과 동일한 방식). local profile은
     # application-local.yml이 이 값을 logging 기본값으로 덮어써 이 placeholder를 아예 평가하지 않는다.

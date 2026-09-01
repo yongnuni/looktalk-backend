@@ -66,3 +66,11 @@ looktalk:
   # 실제 이메일 테스트 시 MAIL_PROVIDER=smtp 설정.
   mail:
     provider: ${MAIL_PROVIDER:logging}
+
+  # =========================
+  # SMS Provider - LOCAL 전용
+  # =========================
+  # 기본은 실제 SMS를 보내지 않는 UNCONFIGURED(LoggingSmsSender/UnconfiguredSmsMessageSender).
+  # 실제 SOLAPI 연동 테스트 시 SMS_OUTBOUND_PROVIDER=SOLAPI로 설정.
+  sms:
+    outbound-provider: ${SMS_OUTBOUND_PROVIDER:UNCONFIGURED}

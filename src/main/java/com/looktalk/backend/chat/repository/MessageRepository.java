@@ -3,12 +3,18 @@ package com.looktalk.backend.chat.repository;
 import com.looktalk.backend.chat.entity.Message;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
+
+    // V10 - outbound SMS(CHAT-006) client-generated idempotency key 재사용 검사. 동일 room+sender+key로
+    // 재요청이 오면 Provider를 다시 호출하지 않고 기존 message를 그대로 반환한다.
+    Optional<Message> findByRoom_RoomIdAndSenderParticipant_ParticipantIdAndClientMessageId(
+            Long roomId, Long senderParticipantId, String clientMessageId);
 
     // CHAT-002 - 여러 room의 "가장 최근 message"를 한 번의 쿼리로 조회한다(방마다 별도 쿼리를 날리는 N+1 방지).
     // 같은 room에서 동일 created_at을 가진 message가 여러 건 나올 수 있어(동시 전송 등) 결과가 room당 1건임을
